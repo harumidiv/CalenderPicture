@@ -117,6 +117,8 @@ final class WanderStage {
 
     /// 1体分の状態。見た目（クレヨン／写真）は body の子のモデルを差し替えて切り替える
     private struct Actor {
+        /// 渡された順番（登場の速さは準備の速さで変わるので、並びはこれで揃える）
+        let order: Int
         let body: Entity
         let crayon: ModelEntity
         let cutout: Data?
@@ -127,33 +129,54 @@ final class WanderStage {
     private var actors: [Actor] = []
     private(set) var style = WanderStyle.crayon
 
-    /// 各キャラクターがいま表示している見た目（登場順）
-    var displayedStyles: [WanderStyle] { actors.map(\.displayed) }
+    /// 各キャラクターがいま表示している見た目（渡された順）
+    var displayedStyles: [WanderStyle] { actors.sorted { $0.order < $1.order }.map(\.displayed) }
 
-    /// キャラクターを1体ずつ登場させる。
+    /// キャラクターを登場させる。重い準備は裏のスレッドで並行して行い、できたものから順に登場させる。
+    /// 全員そろったら、写真の見た目も裏で準備しておく（初めて切り替えたときに待たせないため）。
     func show(_ members: [WanderCast.Member]) async {
         // 人数が多いほど広く動き回る（床の半径 3.5 に収める）
         let areaRadius = min(3.0, 1.5 + 0.12 * Float(members.count))
-        for member in members {
-            guard let image = await Self.decode(member.character),
-                  let crayon = try? PuffyCharacter.makeModel(from: image)
-            else { continue }
-            let body = Entity()
-            body.name = "body"
-            body.addChild(crayon)
-            let root = Entity()
-            root.addChild(body)
+        await withTaskGroup(of: (Int, PuffyCharacter.Prepared?).self) { group in
+            for (order, member) in members.enumerated() {
+                group.addTask { (order, Self.prepare(member.character)) }
+            }
+            for await (order, prepared) in group {
+                // メインスレッドでは RealityKit への登録だけを行う
+                guard let prepared, let crayon = try? PuffyCharacter.makeModel(from: prepared) else { continue }
+                let body = Entity()
+                body.name = "body"
+                body.addChild(crayon)
+                let root = Entity()
+                root.addChild(body)
 
-            var wander = WanderComponent()
-            wander.areaRadius = areaRadius
-            root.position = WanderSystem.randomPoint(radius: areaRadius)
-            wander.target = WanderSystem.randomPoint(radius: areaRadius)
-            root.components.set(wander)
-            characters.addChild(root)
+                var wander = WanderComponent()
+                wander.areaRadius = areaRadius
+                root.position = WanderSystem.randomPoint(radius: areaRadius)
+                wander.target = WanderSystem.randomPoint(radius: areaRadius)
+                root.components.set(wander)
+                characters.addChild(root)
 
-            actors.append(Actor(body: body, crayon: crayon, cutout: member.cutout, photo: nil, displayed: .crayon))
-            if style == .photo { await applyStyle(to: actors.count - 1) }
-            await Task.yield()
+                actors.append(Actor(order: order, body: body, crayon: crayon, cutout: members[order].cutout,
+                                    photo: nil, displayed: .crayon))
+                if style == .photo { await applyStyle(to: actors.count - 1) }
+            }
+        }
+        await preparePhotos()
+    }
+
+    /// 写真の見た目をまだ作っていないキャラクターの分を、裏で並行して準備する。
+    private func preparePhotos() async {
+        await withTaskGroup(of: (Int, PuffyCharacter.Prepared?).self) { group in
+            for (index, actor) in actors.enumerated() where actor.photo == nil {
+                guard let cutout = actor.cutout else { continue }
+                group.addTask { (index, Self.prepare(cutout)) }
+            }
+            for await (index, prepared) in group {
+                guard actors[index].photo == nil, let prepared else { continue }
+                actors[index].photo = try? PuffyCharacter.makeModel(from: prepared)
+                if style == .photo { await applyStyle(to: index) }
+            }
         }
     }
 
@@ -166,9 +189,11 @@ final class WanderStage {
     }
 
     private func applyStyle(to index: Int) async {
+        // 裏での準備がまだ終わっていなければ、ここで（裏のスレッドで）準備する
         if style == .photo, actors[index].photo == nil, let cutout = actors[index].cutout,
-           let image = await Self.decode(cutout) {
-            actors[index].photo = try? PuffyCharacter.makeModel(from: image)
+           let prepared = await Task.detached(priority: .userInitiated, operation: { Self.prepare(cutout) }).value,
+           actors[index].photo == nil {
+            actors[index].photo = try? PuffyCharacter.makeModel(from: prepared)
         }
         // 写真の読み込み中に切り替えられていても、最新の指定に合わせる
         let model: ModelEntity
@@ -184,13 +209,12 @@ final class WanderStage {
         actors[index].displayed = displayed
     }
 
-    private static func decode(_ data: Data) async -> CGImage? {
-        await Task.detached(priority: .userInitiated) {
-            ImageDownsampler.downsample(data, maxPixelSize: EntryImageProcessor.characterLongSide)
-        }.value
+    /// 画像の読み込みと立体の形の準備（メインスレッド外で呼ぶ）
+    nonisolated private static func prepare(_ data: Data) -> PuffyCharacter.Prepared? {
+        guard let image = ImageDownsampler.downsample(data, maxPixelSize: EntryImageProcessor.characterLongSide) else { return nil }
+        return try? PuffyCharacter.prepare(from: image)
     }
 }
-
 /// キャラクターの見た目
 enum WanderStyle: CaseIterable {
     /// クレヨンでデフォルメしたキャラクター

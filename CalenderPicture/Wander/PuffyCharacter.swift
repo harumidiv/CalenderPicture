@@ -13,15 +13,20 @@ import simd
 import UIKit
 
 enum PuffyCharacter {
-    enum BuildError: Error {
+    nonisolated enum BuildError: Error {
         case invalidImage
         /// 不透明な部分がなく、立体にできない
         case emptyShape
     }
 
-    /// 立体の見た目（メッシュと素材）だけを作る。足元（下端中央）が原点、高さ `height`。
-    /// 見た目の切り替えでは、これを body の子として差し替える。
-    static func makeModel(from image: CGImage, height: Float = 1.0, puffiness: Float = 0) throws -> ModelEntity {
+    /// メインスレッド外で用意できる、立体の形とテクスチャ。
+    struct Prepared: @unchecked Sendable {
+        let descriptor: MeshDescriptor
+        let texture: CGImage
+    }
+
+    /// 重い計算（輪郭・厚み・縁の色）をまとめて行う。メインスレッドを止めないよう、裏のスレッドで呼ぶ。
+    nonisolated static func prepare(from image: CGImage, height: Float = 1.0, puffiness: Float = 0) throws -> Prepared {
         // 透明な余白があると足元が浮いて小さくなるので、不透明な範囲に切り詰めてから立体にする
         guard let full = RGBAImage(image) else { throw BuildError.invalidImage }
         guard let bounds = full.opaqueBounds() else { throw BuildError.emptyShape }
@@ -30,11 +35,17 @@ enum PuffyCharacter {
         guard let descriptor = descriptor(for: pixels, worldHeight: height, puffiness: puffiness) else {
             throw BuildError.emptyShape
         }
-        let mesh = try MeshResource.generate(from: [descriptor])
+        return Prepared(descriptor: descriptor, texture: bleedEdgeColors(of: pixels) ?? image)
+    }
+
+    /// 用意した形とテクスチャを RealityKit に登録して、立体の見た目（メッシュと素材）を作る。
+    /// 見た目の切り替えでは、これを body の子として差し替える。
+    static func makeModel(from prepared: Prepared) throws -> ModelEntity {
+        let mesh = try MeshResource.generate(from: [prepared.descriptor])
 
         // 素材0: 表裏の写真、素材1: 側面のグレー
         var photo = PhysicallyBasedMaterial()
-        let color = try TextureResource(image: bleedEdgeColors(of: pixels) ?? image, options: .init(semantic: .color))
+        let color = try TextureResource(image: prepared.texture, options: .init(semantic: .color))
         photo.baseColor = .init(texture: .init(color))
         photo.roughness = 0.85
         photo.metallic = 0.0
@@ -47,6 +58,11 @@ enum PuffyCharacter {
         side.faceCulling = .none
 
         return ModelEntity(mesh: mesh, materials: [photo, side])
+    }
+
+    /// 足元（下端中央）が原点、高さ `height` の立体の見た目を作る（準備と登録をまとめて行う）。
+    static func makeModel(from image: CGImage, height: Float = 1.0, puffiness: Float = 0) throws -> ModelEntity {
+        try makeModel(from: prepare(from: image, height: height, puffiness: puffiness))
     }
 
     /// 足元（下端中央）が原点、高さ `height` のキャラクターを作る。
@@ -63,7 +79,7 @@ enum PuffyCharacter {
     }
 
     /// 輪郭上・グリッド上の点。`g` はグリッド座標（i, j）。
-    private struct Point {
+    nonisolated private struct Point {
         var g: SIMD2<Float>
         var puff: Float
         var normal: SIMD3<Float>
@@ -71,7 +87,7 @@ enum PuffyCharacter {
     }
 
     /// 不透明な部分がなければ nil。
-    private static func descriptor(for pixels: RGBAImage, worldHeight: Float, puffiness: Float) -> MeshDescriptor? {
+    nonisolated private static func descriptor(for pixels: RGBAImage, worldHeight: Float, puffiness: Float) -> MeshDescriptor? {
         // グリッドの細かさ（長辺のセル数）
         let resolution = 128
         let aspect = Float(pixels.width) / Float(pixels.height)
@@ -260,7 +276,7 @@ enum PuffyCharacter {
 
     /// 輪郭ぎりぎりで透明部分の色（黒など）を拾わないよう、
     /// 被写体の縁の色を外側へ数ピクセルにじませた不透明画像を作る。
-    private static func bleedEdgeColors(of pixels: RGBAImage) -> CGImage? {
+    nonisolated private static func bleedEdgeColors(of pixels: RGBAImage) -> CGImage? {
         let width = pixels.width, height = pixels.height
         var rgb = [Float](repeating: 0, count: width * height * 3)
         var known = [Bool](repeating: false, count: width * height)
@@ -271,27 +287,57 @@ enum PuffyCharacter {
             for c in 0..<3 { rgb[p * 3 + c] = Float(pixels.pixels[p * 4 + c]) * 255 / a }
             known[p] = true
         }
-        for _ in 0..<6 {
-            var nextKnown = known
-            for y in 0..<height {
-                for x in 0..<width where !known[y * width + x] {
-                    var sum = SIMD3<Float>.zero
-                    var count: Float = 0
-                    for (nx, ny) in [(x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)]
-                    where nx >= 0 && ny >= 0 && nx < width && ny < height && known[ny * width + nx] {
-                        let n = (ny * width + nx) * 3
-                        sum += SIMD3(rgb[n], rgb[n + 1], rgb[n + 2])
-                        count += 1
-                    }
-                    guard count > 0 else { continue }
-                    let p = (y * width + x) * 3
-                    rgb[p] = sum.x / count
-                    rgb[p + 1] = sum.y / count
-                    rgb[p + 2] = sum.z / count
-                    nextKnown[y * width + x] = true
+        // 縁の外側の数ピクセルだけを、内側から1ピクセルずつ広げて塗る（画像全体を何度もなめない）
+        func neighbors(_ p: Int) -> [Int] {
+            let x = p % width, y = p / width
+            var result: [Int] = []
+            result.reserveCapacity(4)
+            if x > 0 { result.append(p - 1) }
+            if x < width - 1 { result.append(p + 1) }
+            if y > 0 { result.append(p - width) }
+            if y < height - 1 { result.append(p + width) }
+            return result
+        }
+        var queued = known
+        var frontier: [Int] = []
+        for p in 0..<(width * height) where known[p] {
+            // 内側の画素のうち、まだ塗られていない画素と接するものだけが出発点
+            let x = p % width, y = p / width
+            let touchesUnknown = (x > 0 && !known[p - 1]) || (x < width - 1 && !known[p + 1])
+                || (y > 0 && !known[p - width]) || (y < height - 1 && !known[p + width])
+            guard touchesUnknown else { continue }
+            for n in neighbors(p) where !queued[n] {
+                queued[n] = true
+                frontier.append(n)
+            }
+        }
+        for _ in 0..<6 where !frontier.isEmpty {
+            // 1周分はまとめて計算してから確定する（同じ周の画素どうしは参照しない）
+            var colors: [SIMD3<Float>] = []
+            colors.reserveCapacity(frontier.count)
+            for p in frontier {
+                var sum = SIMD3<Float>.zero
+                var count: Float = 0
+                for n in neighbors(p) where known[n] {
+                    sum += SIMD3(rgb[n * 3], rgb[n * 3 + 1], rgb[n * 3 + 2])
+                    count += 1
+                }
+                colors.append(sum / max(count, 1))
+            }
+            var next: [Int] = []
+            for (i, p) in frontier.enumerated() {
+                rgb[p * 3] = colors[i].x
+                rgb[p * 3 + 1] = colors[i].y
+                rgb[p * 3 + 2] = colors[i].z
+                known[p] = true
+            }
+            for p in frontier {
+                for n in neighbors(p) where !queued[n] {
+                    queued[n] = true
+                    next.append(n)
                 }
             }
-            known = nextKnown
+            frontier = next
         }
 
         var data = [UInt8](repeating: 255, count: width * height * 4)
