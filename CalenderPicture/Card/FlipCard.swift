@@ -11,6 +11,8 @@ struct FlipCard: View {
     let front: Image
     let back: Image
     @Binding var isFlipped: Bool
+    /// false のとき読み上げの対象から外す（カードの山の下に重なっているとき）
+    var isAccessible = true
 
     var body: some View {
         let angle = isFlipped ? 180.0 : 0.0
@@ -28,7 +30,8 @@ struct FlipCard: View {
         .accessibilityValue(isFlipped ? "back" : "front")
         .accessibilityHint("タップで裏返す")
         .accessibilityAddTraits(.isButton)
-        .accessibilityIdentifier("card")
+        .accessibilityIdentifier(isAccessible ? "card" : "card-under")
+        .accessibilityHidden(!isAccessible)
     }
 
     /// 回転角度（0〜180）での各面の不透明度。90 度を境に表と裏をきっぱり切り替え、

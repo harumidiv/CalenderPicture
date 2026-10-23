@@ -55,15 +55,11 @@ final class CardUITests: XCTestCase {
         waitForExpectations(timeout: 5)
     }
 
-    /// TabView は前後のページも持っているので、画面に見えているカードを返す
-    var visibleCard: XCUIElement {
-        let screen = app.windows.firstMatch.frame
-        return app.buttons.matching(identifier: "card").allElementsBoundByIndex
-            .first { screen.contains(CGPoint(x: $0.frame.midX, y: $0.frame.midY)) } ?? app.buttons["card"]
-    }
+    /// 一番上のカード（山の下のカードは読み上げの対象外なので1枚だけ見つかる）
+    var visibleCard: XCUIElement { app.buttons["card"] }
 
-    /// カードを並べた横スクロール領域
-    var pager: XCUIElement { app.scrollViews["card-pager"] }
+    /// カードの山
+    var pager: XCUIElement { app.otherElements["card-pager"] }
 
     func testFlipAndSwipe() {
         app.buttons[dayKey(10)].tap()
