@@ -2,7 +2,7 @@
 //  CardPagerView.swift
 //  CalenderPicture
 //
-//  登録済みの日をカードで1枚ずつ表示する。左右スワイプで前後の登録済みの日へめくる。
+//  登録済みの日をカードの山で表示する。左右スワイプで前後の登録済みの日へめくる。
 //
 
 import PhotosUI
@@ -15,9 +15,8 @@ struct CardPagerView: View {
 
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \DiaryEntry.dayKey) private var entries: [DiaryEntry]
-    private let initialDay: DayKey
-    /// いま表示しているページの日（スクロール位置と連動）
-    @State private var scrolledDay: DayKey?
+    /// いま一番上に出ているカードの日
+    @State private var selection: DayKey
     @State private var confirmsDelete = false
     @State private var isPickerPresented = false
     @State private var pickedItem: PhotosPickerItem?
@@ -25,44 +24,22 @@ struct CardPagerView: View {
 
     init(initialDay: DayKey, onClose: @escaping () -> Void) {
         self.onClose = onClose
-        self.initialDay = initialDay
+        _selection = State(initialValue: initialDay)
     }
-
-    private var selection: DayKey { scrolledDay ?? initialDay }
 
     var body: some View {
         VStack(spacing: 16) {
             header
 
-            // TabView のページ表示はスワイプ途中で止まることがあったため、ScrollView のページングを使う
-            ScrollView(.horizontal) {
-                LazyHStack(spacing: 0) {
-                    ForEach(entries, id: \.key) { entry in
-                        // 削除済みのモデルを非同期処理から触らないよう、値を取り出して渡す
-                        CardPage(
-                            drawingData: entry.drawingData,
-                            originalData: entry.originalData,
-                            version: entry.updatedAt,
-                            isCurrent: entry.key == selection
-                        )
-                        .padding(.horizontal, 24)
-                        .padding(.vertical, 8)
-                        .containerRelativeFrame(.horizontal)
-                    }
-                }
-                .scrollTargetLayout()
-            }
-            .scrollTargetBehavior(.paging)
-            .scrollPosition(id: $scrolledDay)
-            .scrollIndicators(.hidden)
-            .accessibilityIdentifier("card-pager")
-            // 初期値で位置を渡すと、途中のページから開いたときに最初のスワイプが元のページに戻されるため、表示後に移動する
-            .onAppear { scrolledDay = initialDay }
+            CardDeck(
+                items: entries.map { .init(key: $0.key, drawing: $0.drawingData, original: $0.originalData, version: $0.updatedAt) },
+                selection: $selection
+            )
 
             actions
         }
         .padding(.vertical)
-        .background(Color(.systemGroupedBackground))
+        .background(Color(white: 0.94))
         .confirmationDialog("この日の写真を削除しますか？", isPresented: $confirmsDelete, titleVisibility: .visible) {
             Button("削除", role: .destructive, action: deleteCurrent)
                 .accessibilityIdentifier("card-delete-confirm")
@@ -108,15 +85,16 @@ struct CardPagerView: View {
     private func deleteCurrent() {
         let deleted = selection
         let next = CardNavigation.neighborAfterDeleting(deleted, in: entries.map(\.key))
-        if let next { withAnimation { scrolledDay = next } }
+        if let next { withAnimation(.spring(duration: 0.35)) { selection = next } }
         try? DiaryStore(context: modelContext).delete(deleted)
         if next == nil { onClose() }
     }
 }
 
 /// 1日分のカード。画像のデコードは非同期で行う。
-/// 裏返しの状態はカードごとに持つ（全ページで共有すると、めくった瞬間に全カードが回ってスクロールを妨げる）。
-private struct CardPage: View {
+/// 裏返しの状態はカードごとに持つ。
+struct CardPage: View {
+    let key: DayKey
     let drawingData: Data
     let originalData: Data
     let version: Date
@@ -129,13 +107,16 @@ private struct CardPage: View {
     var body: some View {
         Group {
             if let images {
-                FlipCard(front: Image(uiImage: images.drawing), back: Image(uiImage: images.original), isFlipped: $isFlipped)
+                // 山の下に重なっているカードは読み上げない
+                FlipCard(front: Image(uiImage: images.drawing), back: Image(uiImage: images.original),
+                         isFlipped: $isFlipped, isAccessible: isCurrent,
+                         footnote: key.date().formatted(.dateTime.month().day().weekday(.abbreviated).locale(Locale(identifier: "ja_JP"))))
             } else {
                 ProgressView()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        // ほかのページへ移ったら表に戻す（隣のページは保持され続けるので onDisappear では戻らない）
+        // ほかの日へ移ったら表に戻す（隣の日のカードは山の中に残り続けるので onDisappear では戻らない）
         .onChange(of: isCurrent) { _, current in
             if !current { isFlipped = false }
         }

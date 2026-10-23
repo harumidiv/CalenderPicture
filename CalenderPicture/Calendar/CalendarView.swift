@@ -15,12 +15,19 @@ struct CalendarView: View {
 
     @Query private var entries: [DiaryEntry]
     @State private var month = MonthGrid(containing: .today())
+    /// シールを貼る順番の乱数の種。月を表示し直すたびに変える
+    @State private var stickerSeed = UInt64.random(in: .min ... .max)
 
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 4), count: 7)
 
     var body: some View {
         let entriesByKey = Dictionary(entries.map { ($0.dayKey, $0) }, uniquingKeysWith: { first, _ in first })
         let today = DayKey.today()
+        // この月で登録済みの日を、ランダムな順にシールを貼る
+        let stickerOrder = StickerMotion.order(
+            of: month.cells().compactMap { $0 }.filter { entriesByKey[$0.string] != nil },
+            seed: stickerSeed
+        )
 
         VStack(spacing: 12) {
             header
@@ -40,7 +47,14 @@ struct CalendarView: View {
                     ForEach(Array(month.cells().enumerated()), id: \.offset) { _, key in
                         if let key {
                             let entry = entriesByKey[key.string]
-                            DayCell(day: key.day, drawingData: entry?.drawingData, version: entry?.updatedAt, isToday: key == today)
+                            DayCell(
+                                day: key.day,
+                                drawingData: entry?.drawingData,
+                                version: entry?.updatedAt,
+                                isToday: key == today,
+                                stickerDelay: StickerMotion.delay(order: stickerOrder[key] ?? 0),
+                                stickerTilt: StickerMotion.tilt(for: key)
+                            )
                                 .accessibilityElement(children: .ignore)
                                 .accessibilityLabel("\(key.month)月\(key.day)日")
                                 .accessibilityValue(entry == nil ? "未登録" : "登録済み")
@@ -95,6 +109,7 @@ struct CalendarView: View {
     }
 
     private func move(by months: Int) {
+        stickerSeed = UInt64.random(in: .min ... .max)
         withAnimation(.snappy) { month = month.adding(months: months) }
     }
 }

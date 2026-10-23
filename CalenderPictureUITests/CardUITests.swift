@@ -55,15 +55,11 @@ final class CardUITests: XCTestCase {
         waitForExpectations(timeout: 5)
     }
 
-    /// TabView は前後のページも持っているので、画面に見えているカードを返す
-    var visibleCard: XCUIElement {
-        let screen = app.windows.firstMatch.frame
-        return app.buttons.matching(identifier: "card").allElementsBoundByIndex
-            .first { screen.contains(CGPoint(x: $0.frame.midX, y: $0.frame.midY)) } ?? app.buttons["card"]
-    }
+    /// 一番上のカード（山の下のカードは読み上げの対象外なので1枚だけ見つかる）
+    var visibleCard: XCUIElement { app.buttons["card"] }
 
-    /// カードを並べた横スクロール領域
-    var pager: XCUIElement { app.scrollViews["card-pager"] }
+    /// カードの山
+    var pager: XCUIElement { app.otherElements["card-pager"] }
 
     func testFlipAndSwipe() {
         app.buttons[dayKey(10)].tap()
@@ -91,6 +87,36 @@ final class CardUITests: XCTestCase {
         waitForDate(day: 10)
         sleep(1)
         XCTAssertEqual(visibleCard.value as? String, "front")
+    }
+
+    func testDeckWrapsAroundInfinitely() {
+        let days = sampleDays
+        app.buttons[dayKey(days[0])].tap()
+        waitForDate(day: days[0])
+        // 最初の日の前は最後の日（山の一番後ろのカードが上に来る）
+        pager.swipeRight()
+        waitForDate(day: days.last!)
+        // 最後の日の次は最初の日に戻る
+        pager.swipeLeft()
+        waitForDate(day: days[0])
+        // 何周でもめくれる
+        for day in days.dropFirst() + [days[0]] {
+            pager.swipeLeft()
+            waitForDate(day: day)
+        }
+    }
+
+    func testRapidSwipesAreNotDropped() {
+        let days = sampleDays
+        app.buttons[dayKey(days[0])].tap()
+        waitForDate(day: days[0])
+        // 続けて払っても、1回も取りこぼさずに1枚ずつめくれる
+        let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.7, dy: 0.45))
+        let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.45))
+        for _ in 0..<3 {
+            start.press(forDuration: 0.01, thenDragTo: end, withVelocity: .fast, thenHoldForDuration: 0)
+        }
+        waitForDate(day: days[3 % days.count])
     }
 
     func testDeleteMovesToNeighborThenCloses() {
