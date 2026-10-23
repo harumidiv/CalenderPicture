@@ -21,6 +21,10 @@ struct CalendarView: View {
     var body: some View {
         let entriesByKey = Dictionary(entries.map { ($0.dayKey, $0) }, uniquingKeysWith: { first, _ in first })
         let today = DayKey.today()
+        // この月で登録済みの日を日付の早い順に並べ、その順にシールを貼る
+        let stickerOrder = Dictionary(uniqueKeysWithValues: month.cells().compactMap { $0 }
+            .filter { entriesByKey[$0.string] != nil }
+            .enumerated().map { ($1, $0) })
 
         VStack(spacing: 12) {
             header
@@ -40,7 +44,14 @@ struct CalendarView: View {
                     ForEach(Array(month.cells().enumerated()), id: \.offset) { _, key in
                         if let key {
                             let entry = entriesByKey[key.string]
-                            DayCell(day: key.day, drawingData: entry?.drawingData, version: entry?.updatedAt, isToday: key == today)
+                            DayCell(
+                                day: key.day,
+                                drawingData: entry?.drawingData,
+                                version: entry?.updatedAt,
+                                isToday: key == today,
+                                stickerDelay: StickerMotion.delay(order: stickerOrder[key] ?? 0),
+                                stickerTilt: StickerMotion.tilt(for: key)
+                            )
                                 .accessibilityElement(children: .ignore)
                                 .accessibilityLabel("\(key.month)月\(key.day)日")
                                 .accessibilityValue(entry == nil ? "未登録" : "登録済み")
