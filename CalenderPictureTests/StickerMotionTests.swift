@@ -16,6 +16,23 @@ struct StickerMotionTests {
         #expect(delays[1] - delays[0] < 0.2)  // 待たせすぎない
     }
 
+    let days = (1...20).map { DayKey(year: 2026, month: 10, day: $0) }
+
+    @Test func orderIsAShuffleOfAllDays() {
+        let order = StickerMotion.order(of: days, seed: 42)
+        #expect(Set(order.keys) == Set(days))
+        #expect(Set(order.values) == Set(0..<days.count))  // 0〜19 番目がちょうど1つずつ
+    }
+
+    @Test func orderIsRandomButStableForSameSeed() {
+        #expect(StickerMotion.order(of: days, seed: 42) == StickerMotion.order(of: days, seed: 42))
+        // 日付順ではない
+        let byDate = Dictionary(uniqueKeysWithValues: days.enumerated().map { ($1, $0) })
+        #expect(StickerMotion.order(of: days, seed: 42) != byDate)
+        // 種が違えば順番も変わる
+        #expect(StickerMotion.order(of: days, seed: 42) != StickerMotion.order(of: days, seed: 7))
+    }
+
     @Test func tiltIsSmallAndStablePerDay() {
         for day in 1...31 {
             let key = DayKey(year: 2026, month: 10, day: day)

@@ -15,16 +15,19 @@ struct CalendarView: View {
 
     @Query private var entries: [DiaryEntry]
     @State private var month = MonthGrid(containing: .today())
+    /// シールを貼る順番の乱数の種。月を表示し直すたびに変える
+    @State private var stickerSeed = UInt64.random(in: .min ... .max)
 
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 4), count: 7)
 
     var body: some View {
         let entriesByKey = Dictionary(entries.map { ($0.dayKey, $0) }, uniquingKeysWith: { first, _ in first })
         let today = DayKey.today()
-        // この月で登録済みの日を日付の早い順に並べ、その順にシールを貼る
-        let stickerOrder = Dictionary(uniqueKeysWithValues: month.cells().compactMap { $0 }
-            .filter { entriesByKey[$0.string] != nil }
-            .enumerated().map { ($1, $0) })
+        // この月で登録済みの日を、ランダムな順にシールを貼る
+        let stickerOrder = StickerMotion.order(
+            of: month.cells().compactMap { $0 }.filter { entriesByKey[$0.string] != nil },
+            seed: stickerSeed
+        )
 
         VStack(spacing: 12) {
             header
@@ -106,6 +109,7 @@ struct CalendarView: View {
     }
 
     private func move(by months: Int) {
+        stickerSeed = UInt64.random(in: .min ... .max)
         withAnimation(.snappy) { month = month.adding(months: months) }
     }
 }

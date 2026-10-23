@@ -17,7 +17,7 @@ struct DayCell: View {
     /// サムネイルを作り直すきっかけ（更新日時）
     let version: Date?
     let isToday: Bool
-    /// シールを貼るまでの待ち時間（秒）。月の中で日付の早い順に少しずつずらす
+    /// シールを貼るまでの待ち時間（秒）。月の中でランダムな順に少しずつずらす
     var stickerDelay: Double = 0
     /// 貼ったあとのシールの傾き（度）
     var stickerTilt: Double = 0
