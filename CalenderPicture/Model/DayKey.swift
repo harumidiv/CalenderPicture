@@ -53,3 +53,7 @@ nonisolated struct DayKey: Hashable, Comparable, Codable, Sendable {
         (lhs.year, lhs.month, lhs.day) < (rhs.year, rhs.month, rhs.day)
     }
 }
+
+extension DayKey: Identifiable {
+    var id: String { string }
+}

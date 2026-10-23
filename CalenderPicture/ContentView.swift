@@ -23,6 +23,7 @@ struct ContentView: View {
     @State private var isPickerPresented = false
     @State private var pickedItem: PhotosPickerItem?
     @State private var registration: PendingRegistration?
+    @State private var openedDay: DayKey?
 
     var body: some View {
         CalendarView(
@@ -30,7 +31,7 @@ struct ContentView: View {
                 pickingDay = day
                 isPickerPresented = true
             },
-            onSelectEntry: { _ in }
+            onSelectEntry: { openedDay = $0 }
         )
         .photosPicker(isPresented: $isPickerPresented, selection: $pickedItem, matching: .images)
         .onChange(of: pickedItem) { _, item in
@@ -41,6 +42,9 @@ struct ContentView: View {
         }
         .sheet(item: $registration) { pending in
             RegistrationView(day: pending.day, item: pending.item) { registration = nil }
+        }
+        .fullScreenCover(item: $openedDay) { day in
+            CardPagerView(initialDay: day) { openedDay = nil }
         }
         #if DEBUG
         .task {

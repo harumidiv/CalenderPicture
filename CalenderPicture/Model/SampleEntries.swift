@@ -37,6 +37,9 @@ enum SampleEntries {
             context.fill(CGRect(origin: .zero, size: size))
             UIColor(hue: hue + 0.5, saturation: 0.3, brightness: 0.7, alpha: 1).setFill()
             context.fill(CGRect(x: 0, y: 850, width: 900, height: 350))
+            // 左右の反転に気づけるよう、左上だけに印を置く
+            UIColor.black.setFill()
+            context.fill(CGRect(x: 60, y: 60, width: 160, height: 160))
             UIColor(hue: hue, saturation: 0.8, brightness: 0.85, alpha: 1).setFill()
             context.cgContext.fillEllipse(in: CGRect(x: 250, y: 350, width: 400, height: 500))
             UIColor.white.setFill()
