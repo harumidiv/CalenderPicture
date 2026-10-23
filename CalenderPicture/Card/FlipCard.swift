@@ -13,11 +13,13 @@ struct FlipCard: View {
     @Binding var isFlipped: Bool
     /// false のとき読み上げの対象から外す（カードの山の下に重なっているとき）
     var isAccessible = true
+    /// 表面の絵の下に添える小さな文字（日付）
+    var footnote: String?
 
     var body: some View {
         let angle = isFlipped ? 180.0 : 0.0
         ZStack {
-            face(front, fill: false)
+            frontFace
                 .modifier(FlipFace(angle: angle, isBack: false))
             face(back, fill: true)
                 .modifier(FlipFace(angle: angle, isBack: true))
@@ -40,18 +42,40 @@ struct FlipCard: View {
         (angle < 90) != isBack ? 1 : 0
     }
 
-    private func face(_ image: Image, fill: Bool) -> some View {
-        RoundedRectangle(cornerRadius: 24)
-            .fill(Color(red: 0.98, green: 0.975, blue: 0.965))
-            .overlay {
-                if fill {
-                    image.resizable().scaledToFill()
-                } else {
-                    image.resizable().scaledToFit()
+    /// 表面: 紙の上にクレヨン画、その下に日付（DOOD のカードのように）
+    private var frontFace: some View {
+        card {
+            VStack(spacing: 6) {
+                front.resizable().scaledToFit()
+                if let footnote {
+                    Text(footnote)
+                        .font(.system(.caption, design: .rounded))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
                 }
             }
-            .clipShape(.rect(cornerRadius: 24))
-            .shadow(color: .black.opacity(0.18), radius: 16, y: 8)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 12)
+        }
+    }
+
+    private func face(_ image: Image, fill: Bool) -> some View {
+        card {
+            if fill {
+                image.resizable().scaledToFill()
+            } else {
+                image.resizable().scaledToFit()
+            }
+        }
+    }
+
+    private func card(@ViewBuilder content: () -> some View) -> some View {
+        RoundedRectangle(cornerRadius: 16)
+            .fill(Color(red: 0.98, green: 0.975, blue: 0.965))
+            .overlay { content() }
+            .clipShape(.rect(cornerRadius: 16))
+            .shadow(color: .black.opacity(0.14), radius: 10, y: 5)
     }
 }
 

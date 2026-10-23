@@ -21,6 +21,10 @@ struct CardDeck: View {
     let items: [Item]
     @Binding var selection: DayKey
 
+    /// カードの幅（画面幅に対する割合）と縦横比。DOOD のように画面の中央に小さめに置く
+    static let cardWidthRatio = 0.58
+    static let cardAspectRatio = 0.71
+
     /// 指の移動量（先がない方向は抑えた値）。左が負
     @State private var drag: Double = 0
     /// カードが飛んでいく・滑り込むアニメーション中は次の操作を受け付けない
@@ -29,22 +33,29 @@ struct CardDeck: View {
     var body: some View {
         GeometryReader { geometry in
             let width = geometry.size.width
+            // 縦に余裕がない画面でもはみ出さないよう、高さからも上限を決める
+            let cardWidth = min(width * Self.cardWidthRatio, geometry.size.height * 0.8 * Self.cardAspectRatio)
+            let cardHeight = cardWidth / Self.cardAspectRatio
             let index = items.firstIndex { $0.key == selection } ?? 0
             let visible = visibleItems(around: index)
 
             ZStack {
                 // 山の厚み: 後ろにのぞくカードの縁
                 if items.count > 1 {
-                    stackEdge(rotation: -3.5, x: -7, y: 7)
-                    stackEdge(rotation: 2.5, x: 6, y: 4)
+                    stackEdge(rotation: -3.5, x: -6, y: 6)
+                        .frame(width: cardWidth, height: cardHeight)
+                    stackEdge(rotation: 2.5, x: 5, y: 3)
+                        .frame(width: cardWidth, height: cardHeight)
                 }
                 ForEach(visible, id: \.item.key) { entry in
                     CardPage(
+                        key: entry.item.key,
                         drawingData: entry.item.drawing,
                         originalData: entry.item.original,
                         version: entry.item.version,
                         isCurrent: entry.role == .current
                     )
+                    .frame(width: cardWidth, height: cardHeight)
                     .modifier(DeckPlacement(role: entry.role, drag: drag, width: width))
                     .allowsHitTesting(entry.role == .current)
                     .accessibilityHidden(entry.role != .current)
@@ -68,7 +79,7 @@ struct CardDeck: View {
     }
 
     private func stackEdge(rotation: Double, x: Double, y: Double) -> some View {
-        RoundedRectangle(cornerRadius: 24)
+        RoundedRectangle(cornerRadius: 16)
             .fill(Color(red: 0.98, green: 0.975, blue: 0.965))
             .shadow(color: .black.opacity(0.08), radius: 6, y: 3)
             .rotationEffect(.degrees(rotation))

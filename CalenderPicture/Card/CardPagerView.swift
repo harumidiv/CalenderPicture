@@ -35,13 +35,11 @@ struct CardPagerView: View {
                 items: entries.map { .init(key: $0.key, drawing: $0.drawingData, original: $0.originalData, version: $0.updatedAt) },
                 selection: $selection
             )
-            .padding(.horizontal, 24)
-            .padding(.vertical, 8)
 
             actions
         }
         .padding(.vertical)
-        .background(Color(.systemGroupedBackground))
+        .background(Color(white: 0.94))
         .confirmationDialog("この日の写真を削除しますか？", isPresented: $confirmsDelete, titleVisibility: .visible) {
             Button("削除", role: .destructive, action: deleteCurrent)
                 .accessibilityIdentifier("card-delete-confirm")
@@ -96,6 +94,7 @@ struct CardPagerView: View {
 /// 1日分のカード。画像のデコードは非同期で行う。
 /// 裏返しの状態はカードごとに持つ。
 struct CardPage: View {
+    let key: DayKey
     let drawingData: Data
     let originalData: Data
     let version: Date
@@ -110,7 +109,8 @@ struct CardPage: View {
             if let images {
                 // 山の下に重なっているカードは読み上げない
                 FlipCard(front: Image(uiImage: images.drawing), back: Image(uiImage: images.original),
-                         isFlipped: $isFlipped, isAccessible: isCurrent)
+                         isFlipped: $isFlipped, isAccessible: isCurrent,
+                         footnote: key.date().formatted(.dateTime.month().day().weekday(.abbreviated).locale(Locale(identifier: "ja_JP"))))
             } else {
                 ProgressView()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
