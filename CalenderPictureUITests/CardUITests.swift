@@ -106,6 +106,19 @@ final class CardUITests: XCTestCase {
         }
     }
 
+    func testRapidSwipesAreNotDropped() {
+        let days = sampleDays
+        app.buttons[dayKey(days[0])].tap()
+        waitForDate(day: days[0])
+        // 続けて払っても、1回も取りこぼさずに1枚ずつめくれる
+        let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.7, dy: 0.45))
+        let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.45))
+        for _ in 0..<3 {
+            start.press(forDuration: 0.01, thenDragTo: end, withVelocity: .fast, thenHoldForDuration: 0)
+        }
+        waitForDate(day: days[3 % days.count])
+    }
+
     func testDeleteMovesToNeighborThenCloses() {
         let days = sampleDays
         app.buttons[dayKey(days[0])].tap()

@@ -27,10 +27,14 @@ struct CardDeck: View {
 
     /// 指の移動量（先がない方向は抑えた値）。左が負
     @State private var drag: Double = 0
-    /// カードを山へ戻す・乗せるアニメーション中は次の操作を受け付けない
-    @State private var isSettling = false
     /// 山から横へ引き出しているカードとその位置。山へ戻す動きの出発点にする
     @State private var pulled: PulledCard?
+    /// 引き出しきるのを待っている、めくった先の日（この間に次のスワイプが来たら、すぐに確定させる）
+    @State private var pendingSelection: DayKey?
+    /// アニメーションの世代。途中で次のスワイプが来たら進め、古いアニメーションの完了処理を無視する
+    @State private var generation = 0
+    /// スワイプの途中か（始まりを1回だけ検出するため）
+    @State private var isDragging = false
 
     private struct PulledCard {
         let key: DayKey
@@ -72,7 +76,7 @@ struct CardDeck: View {
             }
             .frame(width: width, height: geometry.size.height)
             .contentShape(.rect)
-            .gesture(dragGesture(width: width, pullOut: pullOut, index: index))
+            .gesture(dragGesture(width: width, pullOut: pullOut))
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("card-pager")
@@ -87,17 +91,21 @@ struct CardDeck: View {
         return depths.map { (items[order[$0]], $0) }
     }
 
-    private func dragGesture(width: Double, pullOut: Double, index: Int) -> some Gesture {
+    private func dragGesture(width: Double, pullOut: Double) -> some Gesture {
         // 2枚以上あれば、どちらへも無限にめくれる
         let canMove = items.count > 1
         return DragGesture(minimumDistance: 12)
             .onChanged { value in
-                guard !isSettling else { return }
+                if !isDragging {
+                    isDragging = true
+                    // 前のカードを戻している途中なら、待たずにその場で終わらせて、すぐ次をめくれるようにする
+                    finishInFlightAnimation()
+                }
                 let offset = CardDeckGesture.offset(for: value.translation.width, canGoNext: canMove, canGoPrevious: canMove)
                 drag = min(max(offset, -pullOut), pullOut)
             }
             .onEnded { value in
-                guard !isSettling else { return }
+                isDragging = false
                 let outcome = CardDeckGesture.outcome(
                     translation: value.translation.width,
                     predictedEnd: value.predictedEndTranslation.width,
@@ -105,15 +113,17 @@ struct CardDeck: View {
                     canGoNext: canMove,
                     canGoPrevious: canMove
                 )
-                settle(outcome, pullOut: pullOut, index: index)
+                settle(outcome, pullOut: pullOut)
             }
     }
 
     /// 指を離したあと: 山の後ろへ回す・一番上に乗せる・元に戻す
-    private func settle(_ outcome: CardDeckGesture.Outcome, pullOut: Double, index: Int) {
+    private func settle(_ outcome: CardDeckGesture.Outcome, pullOut: Double) {
+        // スワイプの途中で前のアニメーションを終わらせて日が進んでいることがあるので、離した時点の日から計算する
+        let index = items.firstIndex { $0.key == selection } ?? 0
         switch outcome {
         case .stay:
-            withAnimation(.spring(duration: 0.35, bounce: 0.3)) { drag = 0 }
+            withAnimation(.spring(duration: 0.3, bounce: 0.3)) { drag = 0 }
         case .next, .previous:
             let count = items.count
             let isNext = outcome == .next
@@ -121,27 +131,46 @@ struct CardDeck: View {
             let movingKey = items[isNext ? index : CardDeckGesture.wrappedIndex(index, offset: -1, count: count)].key
             let newSelection = items[CardDeckGesture.wrappedIndex(index, offset: isNext ? 1 : -1, count: count)].key
             let side = isNext ? -pullOut : pullOut
-            isSettling = true
+            generation += 1
+            let current = generation
+            pendingSelection = newSelection
             // 1. 山の横まで引き出しきる
-            withAnimation(.spring(duration: 0.22, bounce: 0)) {
+            withAnimation(.spring(duration: 0.14, bounce: 0)) {
                 drag = side
             } completion: {
+                guard current == generation else { return }
+                pendingSelection = nil
                 // 2. 引き出した位置のまま、重なり順だけを入れ替える（次へなら一番後ろへ、前へなら一番上へ）
-                var transaction = Transaction()
-                transaction.disablesAnimations = true
-                withTransaction(transaction) {
+                withoutAnimation {
                     pulled = PulledCard(key: movingKey, x: side)
                     selection = newSelection
                     drag = 0
                 }
                 // 3. 山の位置へ差し込む
-                withAnimation(.spring(duration: 0.4, bounce: 0.2)) {
+                withAnimation(.spring(duration: 0.28, bounce: 0.15)) {
                     pulled = nil
-                } completion: {
-                    isSettling = false
                 }
             }
         }
+    }
+
+    /// 動いている途中のアニメーションを、最後の状態へ一瞬で進める
+    private func finishInFlightAnimation() {
+        generation += 1
+        withoutAnimation {
+            if let pendingSelection {
+                selection = pendingSelection
+                self.pendingSelection = nil
+            }
+            pulled = nil
+            drag = 0
+        }
+    }
+
+    private func withoutAnimation(_ changes: () -> Void) {
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction, changes)
     }
 }
 
