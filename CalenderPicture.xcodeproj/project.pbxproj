@@ -38,22 +38,16 @@
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		05DC44C2308AF8AF00378C8B /* CalenderPicture */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-			);
 			path = CalenderPicture;
 			sourceTree = "<group>";
 		};
 		832F26DD95657608DDA61D2E /* CalenderPictureTests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-			);
 			path = CalenderPictureTests;
 			sourceTree = "<group>";
 		};
 		DF5D845080E7E1645640A018 /* CalenderPictureUITests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-			);
 			path = CalenderPictureUITests;
 			sourceTree = "<group>";
 		};

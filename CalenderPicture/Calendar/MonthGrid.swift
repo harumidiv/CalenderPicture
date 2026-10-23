@@ -22,6 +22,11 @@ nonisolated struct MonthGrid: Hashable, Sendable {
 
     /// 先頭を週の始まり（`calendar.firstWeekday`）に合わせて nil で埋めた、その月の日付。末尾は埋めない。
     func cells(calendar: Calendar = .current) -> [DayKey?] {
+        // 端末の暦が和暦などでも、月と曜日は西暦で数える（週の始まりとタイムゾーンは端末に従う）
+        var gregorian = Calendar(identifier: .gregorian)
+        gregorian.timeZone = calendar.timeZone
+        gregorian.firstWeekday = calendar.firstWeekday
+        let calendar = gregorian
         let first = DayKey(year: year, month: month, day: 1).date(in: calendar)
         let weekday = calendar.component(.weekday, from: first)
         let leading = (weekday - calendar.firstWeekday + 7) % 7

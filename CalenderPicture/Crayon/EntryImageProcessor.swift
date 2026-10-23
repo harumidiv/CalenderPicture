@@ -16,10 +16,21 @@ nonisolated enum EntryImageProcessor {
     static let characterLongSide: CGFloat = 1024
     static let jpegQuality: CGFloat = 0.85
 
+    /// 写真ライブラリから読んだデータを変換する。フルサイズには展開せず、縮小しながら読み込む。失敗したら nil。
+    static func process(data: Data) -> EncodedEntryImages? {
+        guard let original = ImageDownsampler.downsample(data, maxPixelSize: originalLongSide) else { return nil }
+        return process(original: original)
+    }
+
     /// 変換・エンコードに失敗したら nil。
     static func process(_ image: UIImage) -> EncodedEntryImages? {
-        guard let original = image.uprightCGImage(maxSize: originalLongSide),
-              let input = image.uprightCGImage(maxSize: crayonInputLongSide),
+        guard let original = image.uprightCGImage(maxSize: originalLongSide) else { return nil }
+        return process(original: original)
+    }
+
+    /// 元写真（向き補正・縮小済み）から変換入力を作って変換する。
+    private static func process(original: CGImage) -> EncodedEntryImages? {
+        guard let input = UIImage(cgImage: original).uprightCGImage(maxSize: crayonInputLongSide),
               let crayon = CrayonFilter.apply(to: input)
         else { return nil }
         return encode(original: original, crayon: crayon)

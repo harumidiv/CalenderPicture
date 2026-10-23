@@ -29,7 +29,10 @@ final class DiaryEntry {
     }
 
     var key: DayKey {
-        DayKey(string: dayKey)!
+        // 保存時に DayKey.string から作った値なので必ず解釈できる。万一壊れていても落とさず、数字だけ読む
+        if let key = DayKey(string: dayKey) { return key }
+        let parts = dayKey.split(separator: "-").map { Int($0) ?? 0 }
+        return DayKey(year: parts.first ?? 0, month: parts.dropFirst().first ?? 0, day: parts.dropFirst(2).first ?? 0)
     }
 }
 

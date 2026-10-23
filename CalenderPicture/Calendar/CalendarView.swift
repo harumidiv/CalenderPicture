@@ -33,33 +33,36 @@ struct CalendarView: View {
                 }
             }
 
-            LazyVGrid(columns: columns, spacing: 4) {
-                ForEach(Array(month.cells().enumerated()), id: \.offset) { _, key in
-                    if let key {
-                        let entry = entriesByKey[key.string]
-                        DayCell(day: key.day, drawingData: entry?.drawingData, version: entry?.updatedAt, isToday: key == today)
-                            .accessibilityElement(children: .ignore)
-                            .accessibilityLabel("\(key.month)月\(key.day)日")
-                            .accessibilityValue(entry == nil ? "未登録" : "登録済み")
-                            .accessibilityAddTraits(.isButton)
-                            .accessibilityIdentifier("day-\(key.string)")
-                            .onTapGesture {
-                                if entry != nil { onSelectEntry(key) } else { onSelectEmptyDay(key) }
-                            }
-                    } else {
-                        Color.clear.aspectRatio(DayCell.aspectRatio, contentMode: .fit)
+            // 横向きや iPad では6行が画面に収まらないので、グリッドは縦にスクロールできるようにする
+            ScrollView {
+                LazyVGrid(columns: columns, spacing: 4) {
+                    ForEach(Array(month.cells().enumerated()), id: \.offset) { _, key in
+                        if let key {
+                            let entry = entriesByKey[key.string]
+                            DayCell(day: key.day, drawingData: entry?.drawingData, version: entry?.updatedAt, isToday: key == today)
+                                .accessibilityElement(children: .ignore)
+                                .accessibilityLabel("\(key.month)月\(key.day)日")
+                                .accessibilityValue(entry == nil ? "未登録" : "登録済み")
+                                .accessibilityAddTraits(.isButton)
+                                .accessibilityIdentifier("day-\(key.string)")
+                                .onTapGesture {
+                                    if entry != nil { onSelectEntry(key) } else { onSelectEmptyDay(key) }
+                                }
+                        } else {
+                            Color.clear.aspectRatio(DayCell.aspectRatio, contentMode: .fit)
+                        }
                     }
                 }
+                .id(month)
+                .transition(.opacity)
+                .padding(.bottom, 8)
             }
-            .id(month)
-            .transition(.opacity)
-
-            Spacer(minLength: 0)
+            .scrollBounceBehavior(.basedOnSize)
         }
         .padding(.horizontal, 12)
         .padding(.top, 8)
         .contentShape(.rect)
-        .gesture(
+        .simultaneousGesture(
             DragGesture(minimumDistance: 30)
                 .onEnded { value in
                     guard abs(value.translation.width) > abs(value.translation.height) else { return }

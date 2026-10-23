@@ -83,16 +83,15 @@ struct RegistrationView: View {
     }
 
     private func convert() async {
-        guard let data = try? await item.loadTransferable(type: Data.self),
-              let image = UIImage(data: data)
-        else {
+        guard let data = try? await item.loadTransferable(type: Data.self) else {
             phase = .failed
             return
         }
         let result = await Task.detached(priority: .userInitiated) { () -> (EncodedEntryImages, UIImage, UIImage)? in
-            guard let images = EntryImageProcessor.process(image),
-                  let drawing = UIImage(data: images.drawing),
-                  let original = UIImage(data: images.original)
+            // 表示用の画像もここで展開しておき、メインスレッドで展開しないようにする
+            guard let images = EntryImageProcessor.process(data: data),
+                  let drawing = UIImage(data: images.drawing)?.preparingForDisplay(),
+                  let original = UIImage(data: images.original)?.preparingForDisplay()
             else { return nil }
             return (images, drawing, original)
         }.value

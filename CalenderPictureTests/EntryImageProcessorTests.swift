@@ -3,6 +3,7 @@
 //  CalenderPictureTests
 //
 
+import ImageIO
 import Testing
 import UIKit
 @testable import CalenderPicture
@@ -58,6 +59,42 @@ struct EntryImageProcessorTests {
         let crayon = CrayonResult(drawing: makeImage(width: 1200, height: 900), character: nil)
         let encoded = try #require(EntryImageProcessor.encode(original: makeImage(width: 800, height: 600), crayon: crayon))
         #expect(encoded.character == nil)
+    }
+
+    /// EXIF の向き（6 = 右に 90 度回して表示）つき JPEG
+    func makeRotatedJPEG(width: Int, height: Int) throws -> Data {
+        let data = NSMutableData()
+        let destination = try #require(CGImageDestinationCreateWithData(data, "public.jpeg" as CFString, 1, nil))
+        CGImageDestinationAddImage(destination, makeImage(width: width, height: height),
+                                   [kCGImagePropertyOrientation: 6] as CFDictionary)
+        #expect(CGImageDestinationFinalize(destination))
+        return data as Data
+    }
+
+    @Test func downsampleAppliesOrientationAndMaxSize() throws {
+        let image = try #require(ImageDownsampler.downsample(try makeRotatedJPEG(width: 4000, height: 2000), maxPixelSize: 2048))
+        #expect(image.width == 1024 && image.height == 2048)
+    }
+
+    @Test func downsampleKeepsSmallImageSize() throws {
+        let image = try #require(ImageDownsampler.downsample(try makeRotatedJPEG(width: 400, height: 200), maxPixelSize: 2048))
+        #expect(image.width == 200 && image.height == 400)
+    }
+
+    @Test func cardImagesAreDownsampledForDisplay() throws {
+        let original = try #require(UIImage(cgImage: makeImage(width: 2048, height: 1536)).jpegData(compressionQuality: 0.8))
+        let drawing = try #require(UIImage(cgImage: makeImage(width: 1200, height: 900)).jpegData(compressionQuality: 0.8))
+        let images = try #require(CardImageLoader.load(drawing: drawing, original: original))
+        #expect(max(images.original.size.width, images.original.size.height) == CardImageLoader.maxPixelSize)
+        #expect(max(images.drawing.size.width, images.drawing.size.height) == 1200)
+    }
+
+    @Test func processDataProducesDrawingAndOriginal() throws {
+        let encoded = try #require(EntryImageProcessor.process(data: try makeRotatedJPEG(width: 3000, height: 2000)))
+        let original = try #require(UIImage(data: encoded.original)?.cgImage)
+        #expect(original.width == 1365 && original.height == 2048)
+        let drawing = try #require(UIImage(data: encoded.drawing)?.cgImage)
+        #expect(max(drawing.width, drawing.height) == 1200)
     }
 
     @Test func processProducesDrawingAndOriginal() throws {

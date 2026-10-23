@@ -142,8 +142,7 @@ private struct CardPage: View {
         .task(id: version) {
             let drawingData = drawingData, originalData = originalData
             images = await Task.detached(priority: .userInitiated) {
-                guard let drawing = UIImage(data: drawingData), let original = UIImage(data: originalData) else { return nil }
-                return (drawing, original)
+                CardImageLoader.load(drawing: drawingData, original: originalData)
             }.value
         }
     }
