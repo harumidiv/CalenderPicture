@@ -24,6 +24,7 @@ struct ContentView: View {
     @State private var pickedItem: PhotosPickerItem?
     @State private var registration: PendingRegistration?
     @State private var openedDay: DayKey?
+    @State private var wanderMonth: MonthGrid?
 
     var body: some View {
         CalendarView(
@@ -31,7 +32,8 @@ struct ContentView: View {
                 pickingDay = day
                 isPickerPresented = true
             },
-            onSelectEntry: { openedDay = $0 }
+            onSelectEntry: { openedDay = $0 },
+            onOpenWander: { wanderMonth = $0 }
         )
         .photosPicker(isPresented: $isPickerPresented, selection: $pickedItem, matching: .images)
         .onChange(of: pickedItem) { _, item in
@@ -45,6 +47,9 @@ struct ContentView: View {
         }
         .fullScreenCover(item: $openedDay) { day in
             CardPagerView(initialDay: day) { openedDay = nil }
+        }
+        .fullScreenCover(item: $wanderMonth) { month in
+            WanderView(month: month) { wanderMonth = nil }
         }
         #if DEBUG
         .task {

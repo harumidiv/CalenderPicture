@@ -51,3 +51,7 @@ nonisolated struct MonthGrid: Hashable, Sendable {
         "\(year)年\(month)月"
     }
 }
+
+extension MonthGrid: Identifiable {
+    var id: String { "\(year)-\(month)" }
+}

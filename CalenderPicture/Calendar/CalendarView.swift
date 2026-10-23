@@ -11,6 +11,7 @@ import SwiftUI
 struct CalendarView: View {
     var onSelectEmptyDay: (DayKey) -> Void
     var onSelectEntry: (DayKey) -> Void
+    var onOpenWander: (MonthGrid) -> Void
 
     @Query private var entries: [DiaryEntry]
     @State private var month = MonthGrid(containing: .today())
@@ -58,6 +59,12 @@ struct CalendarView: View {
                 .padding(.bottom, 8)
             }
             .scrollBounceBehavior(.basedOnSize)
+
+            Button("この月のキャラクターを動かす", systemImage: "figure.walk") { onOpenWander(month) }
+                .buttonStyle(.borderedProminent)
+                .buttonBorderShape(.capsule)
+                .accessibilityIdentifier("open-wander")
+                .padding(.bottom, 8)
         }
         .padding(.horizontal, 12)
         .padding(.top, 8)

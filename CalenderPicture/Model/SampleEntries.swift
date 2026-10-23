@@ -20,11 +20,38 @@ enum SampleEntries {
             let key = DayKey(year: today.year, month: today.month, day: day)
             guard store.entry(for: key) == nil else { continue }
             let hue = CGFloat(index) / CGFloat(days.count)
-            let images = await Task.detached(priority: .userInitiated) {
-                EntryImageProcessor.process(UIImage(cgImage: makePhoto(hue: hue)))
+            let images = await Task.detached(priority: .userInitiated) { () -> EncodedEntryImages? in
+                guard let images = EntryImageProcessor.process(UIImage(cgImage: makePhoto(hue: hue))) else { return nil }
+                // シミュレータでは被写体を切り抜けずキャラクターが作られないので、確認用の透明なキャラクターを入れる
+                return EncodedEntryImages(
+                    drawing: images.drawing,
+                    original: images.original,
+                    character: images.character ?? UIImage(cgImage: makeCharacter(hue: hue)).pngData()
+                )
             }.value
             if let images { try? store.save(images, for: key) }
         }
+    }
+
+    /// 透明な背景に、目のある丸い主役と足だけを描いたキャラクター画像（余白つき）
+    nonisolated private static func makeCharacter(hue: CGFloat) -> CGImage {
+        let size = CGSize(width: 600, height: 760)
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        format.opaque = false
+        return UIGraphicsImageRenderer(size: size, format: format).image { context in
+            let cg = context.cgContext
+            UIColor(hue: hue, saturation: 0.75, brightness: 0.9, alpha: 1).setFill()
+            cg.fillEllipse(in: CGRect(x: 100, y: 80, width: 400, height: 460))
+            UIBezierPath(roundedRect: CGRect(x: 190, y: 500, width: 80, height: 170), cornerRadius: 35).fill()
+            UIBezierPath(roundedRect: CGRect(x: 330, y: 500, width: 80, height: 170), cornerRadius: 35).fill()
+            UIColor.white.setFill()
+            cg.fillEllipse(in: CGRect(x: 200, y: 220, width: 80, height: 90))
+            cg.fillEllipse(in: CGRect(x: 320, y: 220, width: 80, height: 90))
+            UIColor.black.setFill()
+            cg.fillEllipse(in: CGRect(x: 225, y: 250, width: 40, height: 45))
+            cg.fillEllipse(in: CGRect(x: 345, y: 250, width: 40, height: 45))
+        }.cgImage!
     }
 
     /// 背景に色の帯、中央に丸い主役がいる写真風の画像

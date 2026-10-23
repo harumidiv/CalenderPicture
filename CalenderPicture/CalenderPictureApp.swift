@@ -5,12 +5,18 @@
 //  Created by harumi.sagawa on 2026/10/23.
 //
 
+import RealityKit
 import SwiftData
 import SwiftUI
 
 @main
 struct CalenderPictureApp: App {
-    var body: some Scene {
+    init() {
+        WanderComponent.registerComponent()
+        WanderSystem.registerSystem()
+    }
+
+    var body: some SwiftUI.Scene {
         WindowGroup {
             ContentView()
         }

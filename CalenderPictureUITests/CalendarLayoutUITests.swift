@@ -21,9 +21,11 @@ final class CalendarLayoutUITests: XCTestCase {
         let now = Calendar.current.dateComponents([.year, .month], from: Date())
         let lastDay = Calendar.current.range(of: .day, in: .month, for: Date())!.count
         let cell = app.buttons[String(format: "day-%04d-%02d-%02d", now.year!, now.month!, lastDay)]
-        XCTAssertTrue(cell.waitForExistence(timeout: 5))
+        // グリッドは遅延生成なので、画面外の月末のマスはスクロールしてから現れる
+        XCTAssertTrue(app.scrollViews.firstMatch.waitForExistence(timeout: 5))
         app.scrollViews.firstMatch.swipeUp()
         sleep(1)
+        XCTAssertTrue(cell.waitForExistence(timeout: 5))
         XCTAssertTrue(cell.isHittable, "横向きで月末の日が画面外に切れている")
     }
 }
