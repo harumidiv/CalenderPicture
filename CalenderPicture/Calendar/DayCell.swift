@@ -12,14 +12,19 @@ struct DayCell: View {
     static let aspectRatio: CGFloat = 0.78
 
     let day: Int
-    let entry: DiaryEntry?
+    /// クレヨン画のデータ。削除済みのモデルを非同期処理から触らないよう、モデルではなく値で受け取る
+    let drawingData: Data?
+    /// サムネイルを作り直すきっかけ（更新日時）
+    let version: Date?
     let isToday: Bool
+
+    private var isRegistered: Bool { drawingData != nil }
 
     @State private var thumbnail: UIImage?
 
     var body: some View {
         RoundedRectangle(cornerRadius: 8)
-            .fill(entry == nil ? Color(.secondarySystemBackground) : .white)
+            .fill(isRegistered ? .white : Color(.secondarySystemBackground))
             .aspectRatio(Self.aspectRatio, contentMode: .fit)
             .overlay {
                 if let thumbnail {
@@ -38,16 +43,16 @@ struct DayCell: View {
                     .background {
                         if isToday {
                             Circle().fill(.tint)
-                        } else if entry != nil {
+                        } else if isRegistered {
                             Circle().fill(.background.opacity(0.85))
                         }
                     }
                     .padding(3)
             }
-            .shadow(color: .black.opacity(entry == nil ? 0 : 0.12), radius: 2, y: 1)
+            .shadow(color: .black.opacity(isRegistered ? 0.12 : 0), radius: 2, y: 1)
             .contentShape(.rect)
-            .task(id: entry?.updatedAt) {
-                thumbnail = await Self.makeThumbnail(from: entry?.drawingData)
+            .task(id: version) {
+                thumbnail = await Self.makeThumbnail(from: drawingData)
             }
     }
 

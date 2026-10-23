@@ -37,7 +37,12 @@ struct CalendarView: View {
                 ForEach(Array(month.cells().enumerated()), id: \.offset) { _, key in
                     if let key {
                         let entry = entriesByKey[key.string]
-                        DayCell(day: key.day, entry: entry, isToday: key == today)
+                        DayCell(day: key.day, drawingData: entry?.drawingData, version: entry?.updatedAt, isToday: key == today)
+                            .accessibilityElement(children: .ignore)
+                            .accessibilityLabel("\(key.month)月\(key.day)日")
+                            .accessibilityValue(entry == nil ? "未登録" : "登録済み")
+                            .accessibilityAddTraits(.isButton)
+                            .accessibilityIdentifier("day-\(key.string)")
                             .onTapGesture {
                                 if entry != nil { onSelectEntry(key) } else { onSelectEmptyDay(key) }
                             }

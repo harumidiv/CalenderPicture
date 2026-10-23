@@ -14,6 +14,7 @@ struct CalenderPictureApp: App {
         WindowGroup {
             ContentView()
         }
-        .modelContainer(for: DiaryEntry.self)
+        // UI テストでは起動引数 -inMemoryStore で毎回空の保存先を使う
+        .modelContainer(for: DiaryEntry.self, inMemory: ProcessInfo.processInfo.arguments.contains("-inMemoryStore"))
     }
 }
