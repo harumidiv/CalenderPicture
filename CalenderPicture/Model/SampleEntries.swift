@@ -26,7 +26,8 @@ enum SampleEntries {
                 return EncodedEntryImages(
                     drawing: images.drawing,
                     original: images.original,
-                    character: images.character ?? UIImage(cgImage: makeCharacter(hue: hue)).pngData()
+                    character: images.character ?? UIImage(cgImage: makeCharacter(hue: hue)).pngData(),
+                    cutout: images.cutout ?? UIImage(cgImage: makeCutout(hue: hue)).pngData()
                 )
             }.value
             if let images { try? store.save(images, for: key) }
@@ -51,6 +52,27 @@ enum SampleEntries {
             UIColor.black.setFill()
             cg.fillEllipse(in: CGRect(x: 225, y: 250, width: 40, height: 45))
             cg.fillEllipse(in: CGRect(x: 345, y: 250, width: 40, height: 45))
+        }.cgImage!
+    }
+
+    /// キャラクターと同じ形に切り抜いた、写真風（グラデーションと縞模様）の画像
+    nonisolated private static func makeCutout(hue: CGFloat) -> CGImage {
+        let size = CGSize(width: 600, height: 760)
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        format.opaque = false
+        return UIGraphicsImageRenderer(size: size, format: format).image { context in
+            let cg = context.cgContext
+            let shape = UIBezierPath(ovalIn: CGRect(x: 100, y: 80, width: 400, height: 460))
+            shape.append(UIBezierPath(roundedRect: CGRect(x: 190, y: 500, width: 80, height: 170), cornerRadius: 35))
+            shape.append(UIBezierPath(roundedRect: CGRect(x: 330, y: 500, width: 80, height: 170), cornerRadius: 35))
+            shape.addClip()
+            let colors = [UIColor(hue: hue, saturation: 0.35, brightness: 1, alpha: 1).cgColor,
+                          UIColor(hue: hue + 0.1, saturation: 0.9, brightness: 0.45, alpha: 1).cgColor]
+            let gradient = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: colors as CFArray, locations: [0, 1])!
+            cg.drawLinearGradient(gradient, start: CGPoint(x: 100, y: 80), end: CGPoint(x: 500, y: 680), options: [])
+            UIColor.white.withAlphaComponent(0.25).setFill()
+            for y in stride(from: 80, to: 680, by: 40) { cg.fill(CGRect(x: 0, y: y, width: 600, height: 12)) }
         }.cgImage!
     }
 

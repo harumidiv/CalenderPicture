@@ -44,7 +44,8 @@ struct EntryImageProcessorTests {
     @Test func encodesCharacterAsDownscaledPNGWithAlpha() throws {
         let crayon = CrayonResult(
             drawing: makeImage(width: 1200, height: 900),
-            character: makeImage(width: 1200, height: 900, transparent: true)
+            character: makeImage(width: 1200, height: 900, transparent: true),
+            photoCutout: nil
         )
         let encoded = try #require(EntryImageProcessor.encode(original: makeImage(width: 2048, height: 1536), crayon: crayon))
         let character = try #require(encoded.character.flatMap { UIImage(data: $0)?.cgImage })
@@ -55,10 +56,24 @@ struct EntryImageProcessorTests {
         #expect(UIImage(data: encoded.original) != nil)
     }
 
+    @Test func encodesPhotoCutoutAsDownscaledPNG() throws {
+        let crayon = CrayonResult(
+            drawing: makeImage(width: 1200, height: 900),
+            character: makeImage(width: 1200, height: 900, transparent: true),
+            photoCutout: makeImage(width: 1100, height: 1400, transparent: true)
+        )
+        let encoded = try #require(EntryImageProcessor.encode(original: makeImage(width: 800, height: 600), crayon: crayon))
+        let cutout = try #require(encoded.cutout.flatMap { UIImage(data: $0)?.cgImage })
+        #expect(max(cutout.width, cutout.height) == 1024)
+        let opaqueInfos: [CGImageAlphaInfo] = [.none, .noneSkipLast, .noneSkipFirst]
+        #expect(!opaqueInfos.contains(cutout.alphaInfo))
+    }
+
     @Test func noCharacterWhenSubjectMissing() throws {
-        let crayon = CrayonResult(drawing: makeImage(width: 1200, height: 900), character: nil)
+        let crayon = CrayonResult(drawing: makeImage(width: 1200, height: 900), character: nil, photoCutout: nil)
         let encoded = try #require(EntryImageProcessor.encode(original: makeImage(width: 800, height: 600), crayon: crayon))
         #expect(encoded.character == nil)
+        #expect(encoded.cutout == nil)
     }
 
     /// EXIF の向き（6 = 右に 90 度回して表示）つき JPEG

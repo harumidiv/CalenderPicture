@@ -25,6 +25,7 @@ struct DiaryStore {
             existing.drawingData = images.drawing
             existing.originalData = images.original
             existing.characterData = images.character
+            existing.cutoutData = images.cutout
             existing.updatedAt = .now
         } else {
             context.insert(DiaryEntry(key: key, images: images))

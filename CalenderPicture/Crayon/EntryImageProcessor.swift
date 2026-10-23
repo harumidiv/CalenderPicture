@@ -40,9 +40,12 @@ nonisolated enum EntryImageProcessor {
         guard let drawing = UIImage(cgImage: crayon.drawing).jpegData(compressionQuality: jpegQuality),
               let originalData = UIImage(cgImage: original).jpegData(compressionQuality: jpegQuality)
         else { return nil }
-        let character = crayon.character
-            .flatMap { UIImage(cgImage: $0).uprightCGImage(maxSize: characterLongSide) }
-            .flatMap { UIImage(cgImage: $0).pngData() }
-        return EncodedEntryImages(drawing: drawing, original: originalData, character: character)
+        func png(_ image: CGImage?) -> Data? {
+            image
+                .flatMap { UIImage(cgImage: $0).uprightCGImage(maxSize: characterLongSide) }
+                .flatMap { UIImage(cgImage: $0).pngData() }
+        }
+        return EncodedEntryImages(drawing: drawing, original: originalData,
+                                  character: png(crayon.character), cutout: png(crayon.photoCutout))
     }
 }

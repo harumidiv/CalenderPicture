@@ -13,6 +13,8 @@ nonisolated struct CrayonResult {
     let drawing: CGImage
     /// 背景が透明なクレヨンのキャラクター（3D 表示用）。主役を切り抜けなかったときは nil
     let character: CGImage?
+    /// 元写真を主役の形に切り抜いた画像（3D 表示の「写真」用）。主役を切り抜けなかったときは nil
+    let photoCutout: CGImage?
 }
 
 /// 写真の主役（人・物）を切り抜き、白い紙にクレヨンでらくがきしたような絵に変換する
@@ -110,7 +112,15 @@ nonisolated enum CrayonFilter {
             ])
             return context.createCGImage(cutout.cropped(to: extent), from: extent)
         }
-        return CrayonResult(drawing: drawingImage, character: character)
+        // 7. 元写真を主役の形に切り抜いたもの（Apple の切り抜きの輪郭そのまま）
+        let photoCutout = foreground.flatMap { mask in
+            let cutout = source.applyingFilter("CIBlendWithMask", parameters: [
+                kCIInputBackgroundImageKey: CIImage.clear,
+                kCIInputMaskImageKey: mask,
+            ])
+            return context.createCGImage(cutout.cropped(to: box), from: box)
+        }
+        return CrayonResult(drawing: drawingImage, character: character, photoCutout: photoCutout)
     }
 
     // MARK: - 切り抜き・検出

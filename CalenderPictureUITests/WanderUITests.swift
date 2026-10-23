@@ -38,8 +38,14 @@ final class WanderUITests: XCTestCase {
         sleep(4)  // キャラクターが登場して動き出すのを待つ
         XCTAssertFalse(app.staticTexts["wander-empty"].exists)
         saveScreenshot("wander-1")
+        // 「写真」に切り替えると、同じキャラクターが切り抜き写真の見た目になる
+        app.segmentedControls["wander-style"].buttons["写真"].tap()
         sleep(2)
-        saveScreenshot("wander-2")
+        saveScreenshot("wander-photo")
+        XCTAssertTrue(app.segmentedControls["wander-style"].buttons["写真"].isSelected)
+        app.segmentedControls["wander-style"].buttons["クレヨン"].tap()
+        sleep(1)
+        saveScreenshot("wander-crayon-again")
 
         app.buttons["wander-close"].tap()
         XCTAssertTrue(app.buttons["open-wander"].waitForExistence(timeout: 5))
@@ -49,5 +55,7 @@ final class WanderUITests: XCTestCase {
         app.buttons["次の月"].tap()
         app.buttons["open-wander"].tap()
         XCTAssertTrue(app.staticTexts["wander-empty"].waitForExistence(timeout: 5))
+        // キャラクターがいない月では切り替えボタンを出さない
+        XCTAssertFalse(app.segmentedControls["wander-style"].exists)
     }
 }

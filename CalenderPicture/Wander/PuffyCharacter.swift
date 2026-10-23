@@ -19,10 +19,9 @@ enum PuffyCharacter {
         case emptyShape
     }
 
-    /// 足元（下端中央）が原点、高さ `height` のキャラクターを作る。
-    /// 階層: root（位置・向き）> body（跳ねる・揺れる）> model
-    /// - Parameter puffiness: 表裏のふくらみの強さ。0 で平らな板（写真の形を押し出しただけ）、1 でぬいぐるみ風。
-    static func make(from image: CGImage, height: Float = 1.0, puffiness: Float = 0) throws -> Entity {
+    /// 立体の見た目（メッシュと素材）だけを作る。足元（下端中央）が原点、高さ `height`。
+    /// 見た目の切り替えでは、これを body の子として差し替える。
+    static func makeModel(from image: CGImage, height: Float = 1.0, puffiness: Float = 0) throws -> ModelEntity {
         // 透明な余白があると足元が浮いて小さくなるので、不透明な範囲に切り詰めてから立体にする
         guard let full = RGBAImage(image) else { throw BuildError.invalidImage }
         guard let bounds = full.opaqueBounds() else { throw BuildError.emptyShape }
@@ -47,10 +46,16 @@ enum PuffyCharacter {
         side.metallic = 0.0
         side.faceCulling = .none
 
-        let model = ModelEntity(mesh: mesh, materials: [photo, side])
+        return ModelEntity(mesh: mesh, materials: [photo, side])
+    }
+
+    /// 足元（下端中央）が原点、高さ `height` のキャラクターを作る。
+    /// 階層: root（位置・向き）> body（跳ねる・揺れる）> model
+    /// - Parameter puffiness: 表裏のふくらみの強さ。0 で平らな板（写真の形を押し出しただけ）、1 でぬいぐるみ風。
+    static func make(from image: CGImage, height: Float = 1.0, puffiness: Float = 0) throws -> Entity {
         let body = Entity()
         body.name = "body"
-        body.addChild(model)
+        body.addChild(try makeModel(from: image, height: height, puffiness: puffiness))
 
         let root = Entity()
         root.addChild(body)

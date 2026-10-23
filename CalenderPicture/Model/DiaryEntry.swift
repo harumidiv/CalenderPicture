@@ -18,6 +18,8 @@ final class DiaryEntry {
     @Attribute(.externalStorage) var originalData: Data
     /// 背景が透明なクレヨンのキャラクター（PNG）。3D 表示用。被写体を切り抜けなかったときは nil
     @Attribute(.externalStorage) var characterData: Data?
+    /// 元写真を被写体の形に切り抜いた画像（PNG）。3D 表示の「写真」用。被写体を切り抜けなかったとき・古い登録では nil
+    @Attribute(.externalStorage) var cutoutData: Data?
     var updatedAt: Date
 
     init(key: DayKey, images: EncodedEntryImages) {
@@ -25,6 +27,7 @@ final class DiaryEntry {
         drawingData = images.drawing
         originalData = images.original
         characterData = images.character
+        cutoutData = images.cutout
         updatedAt = .now
     }
 
@@ -41,4 +44,12 @@ nonisolated struct EncodedEntryImages: Sendable {
     let drawing: Data
     let original: Data
     let character: Data?
+    let cutout: Data?
+
+    init(drawing: Data, original: Data, character: Data?, cutout: Data? = nil) {
+        self.drawing = drawing
+        self.original = original
+        self.character = character
+        self.cutout = cutout
+    }
 }

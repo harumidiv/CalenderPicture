@@ -25,11 +25,12 @@ struct DiaryStoreTests {
 
     @Test func saveOverwritesSameDay() throws {
         try store.save(images, for: day)
-        try store.save(EncodedEntryImages(drawing: Data([9]), original: Data([8]), character: Data([7])), for: day)
+        try store.save(EncodedEntryImages(drawing: Data([9]), original: Data([8]), character: Data([7]), cutout: Data([6])), for: day)
         #expect(store.allKeys() == [day])
         #expect(store.entry(for: day)?.drawingData == Data([9]))
         #expect(store.entry(for: day)?.originalData == Data([8]))
         #expect(store.entry(for: day)?.characterData == Data([7]))
+        #expect(store.entry(for: day)?.cutoutData == Data([6]))
     }
 
     @Test func allKeysAreSorted() throws {
