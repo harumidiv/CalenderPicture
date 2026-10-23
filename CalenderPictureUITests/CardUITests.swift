@@ -89,6 +89,23 @@ final class CardUITests: XCTestCase {
         XCTAssertEqual(visibleCard.value as? String, "front")
     }
 
+    func testDeckWrapsAroundInfinitely() {
+        let days = sampleDays
+        app.buttons[dayKey(days[0])].tap()
+        waitForDate(day: days[0])
+        // 最初の日の前は最後の日（山の一番後ろのカードが上に来る）
+        pager.swipeRight()
+        waitForDate(day: days.last!)
+        // 最後の日の次は最初の日に戻る
+        pager.swipeLeft()
+        waitForDate(day: days[0])
+        // 何周でもめくれる
+        for day in days.dropFirst() + [days[0]] {
+            pager.swipeLeft()
+            waitForDate(day: day)
+        }
+    }
+
     func testDeleteMovesToNeighborThenCloses() {
         let days = sampleDays
         app.buttons[dayKey(days[0])].tap()

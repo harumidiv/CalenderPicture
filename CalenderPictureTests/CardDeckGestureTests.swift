@@ -34,6 +34,19 @@ struct CardDeckGestureTests {
         #expect(outcome(200, previous: false) == .stay)   // 最初の日より前はない
     }
 
+    @Test func deckWrapsAround() {
+        // 最後の日の次は最初の日、最初の日の前は最後の日（実物のカードの山のように無限にめくれる）
+        #expect(CardDeckGesture.wrappedIndex(4, offset: 1, count: 5) == 0)
+        #expect(CardDeckGesture.wrappedIndex(0, offset: -1, count: 5) == 4)
+        #expect(CardDeckGesture.wrappedIndex(2, offset: 1, count: 5) == 3)
+    }
+
+    @Test func deckOrderStartsFromCurrent() {
+        // 山の上から順に: 今の日、次の日、その次…と並び、最後に前の日（一番後ろ）
+        #expect(CardDeckGesture.deckOrder(current: 3, count: 5) == [3, 4, 0, 1, 2])
+        #expect(CardDeckGesture.deckOrder(current: 0, count: 1) == [0])
+    }
+
     @Test func dragBeyondEndsIsResisted() {
         // 先がない方向へは少ししか動かない
         #expect(CardDeckGesture.offset(for: -200, canGoNext: false, canGoPrevious: true) == -50)

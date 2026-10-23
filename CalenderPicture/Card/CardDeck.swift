@@ -2,8 +2,8 @@
 //  CardDeck.swift
 //  CalenderPicture
 //
-//  重なったカードの山。左へ払うと一番上のカードが傾きながら飛んでいき、下から次の日のカードが出てくる。
-//  右へ払うと前の日のカードが左から滑り込んできて、山の上に重なる。
+//  重なったカードの山。実物のカードのように、左へ払うと一番上のカードを横へ引き出して山の一番後ろへ回し、
+//  右へ払うと一番後ろのカードを横へ引き出して一番上に乗せる。最後と最初がつながっていて無限にめくれる。
 //
 
 import SwiftUI
@@ -27,8 +27,15 @@ struct CardDeck: View {
 
     /// 指の移動量（先がない方向は抑えた値）。左が負
     @State private var drag: Double = 0
-    /// カードが飛んでいく・滑り込むアニメーション中は次の操作を受け付けない
+    /// カードを山へ戻す・乗せるアニメーション中は次の操作を受け付けない
     @State private var isSettling = false
+    /// 山から横へ引き出しているカードとその位置。山へ戻す動きの出発点にする
+    @State private var pulled: PulledCard?
+
+    private struct PulledCard {
+        let key: DayKey
+        let x: Double
+    }
 
     var body: some View {
         GeometryReader { geometry in
@@ -37,64 +44,57 @@ struct CardDeck: View {
             let cardWidth = min(width * Self.cardWidthRatio, geometry.size.height * 0.8 * Self.cardAspectRatio)
             let cardHeight = cardWidth / Self.cardAspectRatio
             let index = items.firstIndex { $0.key == selection } ?? 0
-            let visible = visibleItems(around: index)
+            let pullOut = (width + cardWidth) / 2 + 12  // カードが山の横にちょうど出きる距離
 
             ZStack {
-                // 山の厚み: 後ろにのぞくカードの縁
-                if items.count > 1 {
-                    stackEdge(rotation: -3.5, x: -6, y: 6)
-                        .frame(width: cardWidth, height: cardHeight)
-                    stackEdge(rotation: 2.5, x: 5, y: 3)
-                        .frame(width: cardWidth, height: cardHeight)
-                }
-                ForEach(visible, id: \.item.key) { entry in
+                ForEach(visibleCards(current: index), id: \.item.key) { card in
                     CardPage(
-                        key: entry.item.key,
-                        drawingData: entry.item.drawing,
-                        originalData: entry.item.original,
-                        version: entry.item.version,
-                        isCurrent: entry.role == .current
+                        key: card.item.key,
+                        drawingData: card.item.drawing,
+                        originalData: card.item.original,
+                        version: card.item.version,
+                        isCurrent: card.depth == 0
                     )
                     .frame(width: cardWidth, height: cardHeight)
-                    .modifier(DeckPlacement(role: entry.role, drag: drag, width: width))
-                    .allowsHitTesting(entry.role == .current)
-                    .accessibilityHidden(entry.role != .current)
+                    .modifier(DeckPlacement(
+                        depth: card.depth,
+                        count: items.count,
+                        drag: drag,
+                        pullOut: pullOut,
+                        pulledX: pulled?.key == card.item.key ? pulled?.x : nil,
+                        width: width
+                    ))
+                    // 上のカードほど手前（引き出し中の前の日のカードは、乗せるまで一番後ろ）
+                    .zIndex(Double(items.count - card.depth))
+                    .allowsHitTesting(card.depth == 0)
+                    .accessibilityHidden(card.depth != 0)
                 }
             }
             .frame(width: width, height: geometry.size.height)
             .contentShape(.rect)
-            .gesture(dragGesture(width: width, index: index))
+            .gesture(dragGesture(width: width, pullOut: pullOut, index: index))
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("card-pager")
     }
 
-    /// 重なり順（下から: 次の日、今の日、前の日）に並べた、描画するカード
-    private func visibleItems(around index: Int) -> [(item: Item, role: DeckRole)] {
-        var result: [(item: Item, role: DeckRole)] = []
-        if items.indices.contains(index + 1) { result.append((items[index + 1], .next)) }
-        if items.indices.contains(index) { result.append((items[index], .current)) }
-        if items.indices.contains(index - 1) { result.append((items[index - 1], .previous)) }
-        return result
+    /// 描画するカード: 上から3枚と、一番後ろ（右へ払ったときに引き出す前の日）
+    private func visibleCards(current index: Int) -> [(item: Item, depth: Int)] {
+        guard !items.isEmpty else { return [] }
+        let order = CardDeckGesture.deckOrder(current: index, count: items.count)
+        var depths = Array(0..<min(DeckPlacement.visibleDepth, items.count))
+        if items.count - 1 >= DeckPlacement.visibleDepth { depths.append(items.count - 1) }
+        return depths.map { (items[order[$0]], $0) }
     }
 
-    private func stackEdge(rotation: Double, x: Double, y: Double) -> some View {
-        RoundedRectangle(cornerRadius: 16)
-            .fill(Color(red: 0.98, green: 0.975, blue: 0.965))
-            .shadow(color: .black.opacity(0.08), radius: 6, y: 3)
-            .rotationEffect(.degrees(rotation))
-            .offset(x: x, y: y)
-            .scaleEffect(DeckPlacement.underScale)
-            .accessibilityHidden(true)
-    }
-
-    private func dragGesture(width: Double, index: Int) -> some Gesture {
-        let canGoNext = items.indices.contains(index + 1)
-        let canGoPrevious = items.indices.contains(index - 1)
+    private func dragGesture(width: Double, pullOut: Double, index: Int) -> some Gesture {
+        // 2枚以上あれば、どちらへも無限にめくれる
+        let canMove = items.count > 1
         return DragGesture(minimumDistance: 12)
             .onChanged { value in
                 guard !isSettling else { return }
-                drag = CardDeckGesture.offset(for: value.translation.width, canGoNext: canGoNext, canGoPrevious: canGoPrevious)
+                let offset = CardDeckGesture.offset(for: value.translation.width, canGoNext: canMove, canGoPrevious: canMove)
+                drag = min(max(offset, -pullOut), pullOut)
             }
             .onEnded { value in
                 guard !isSettling else { return }
@@ -102,75 +102,113 @@ struct CardDeck: View {
                     translation: value.translation.width,
                     predictedEnd: value.predictedEndTranslation.width,
                     width: width,
-                    canGoNext: canGoNext,
-                    canGoPrevious: canGoPrevious
+                    canGoNext: canMove,
+                    canGoPrevious: canMove
                 )
-                settle(outcome, width: width, index: index)
+                settle(outcome, pullOut: pullOut, index: index)
             }
     }
 
-    /// 指を離したあと: 飛ばす・滑り込ませる・元に戻す
-    private func settle(_ outcome: CardDeckGesture.Outcome, width: Double, index: Int) {
-        let travel = width * DeckPlacement.travelRatio
+    /// 指を離したあと: 山の後ろへ回す・一番上に乗せる・元に戻す
+    private func settle(_ outcome: CardDeckGesture.Outcome, pullOut: Double, index: Int) {
         switch outcome {
         case .stay:
             withAnimation(.spring(duration: 0.35, bounce: 0.3)) { drag = 0 }
         case .next, .previous:
-            let target = outcome == .next ? -travel : travel
-            let newSelection = items[outcome == .next ? index + 1 : index - 1].key
+            let count = items.count
+            let isNext = outcome == .next
+            // 引き出すカード: 次へなら一番上、前へなら一番後ろ
+            let movingKey = items[isNext ? index : CardDeckGesture.wrappedIndex(index, offset: -1, count: count)].key
+            let newSelection = items[CardDeckGesture.wrappedIndex(index, offset: isNext ? 1 : -1, count: count)].key
+            let side = isNext ? -pullOut : pullOut
             isSettling = true
-            withAnimation(.spring(duration: 0.32, bounce: 0.15)) {
-                drag = target
+            // 1. 山の横まで引き出しきる
+            withAnimation(.spring(duration: 0.22, bounce: 0)) {
+                drag = side
             } completion: {
-                // 動き終わった見た目のまま役割を入れ替える（次の日が一番上に、または前の日が一番上に）
+                // 2. 引き出した位置のまま、重なり順だけを入れ替える（次へなら一番後ろへ、前へなら一番上へ）
                 var transaction = Transaction()
                 transaction.disablesAnimations = true
                 withTransaction(transaction) {
+                    pulled = PulledCard(key: movingKey, x: side)
                     selection = newSelection
                     drag = 0
                 }
-                isSettling = false
+                // 3. 山の位置へ差し込む
+                withAnimation(.spring(duration: 0.4, bounce: 0.2)) {
+                    pulled = nil
+                } completion: {
+                    isSettling = false
+                }
             }
         }
     }
 }
 
-/// 役割と指の移動量から、カードの位置・傾き・大きさを決める
+/// 山の中の深さ（上から何枚目か）と指の移動量から、カードの位置・傾き・大きさを決める
 private struct DeckPlacement: ViewModifier {
-    /// 下に重なったカードの大きさ
-    static let underScale = 0.94
-    /// 飛んでいく・滑り込む距離（画面幅に対する割合）
-    static let travelRatio = 1.25
-    /// 画面幅ぶん動いたときの傾き（度）
+    /// 見える深さ（これより下のカードは、一番下の位置に重ねて隠す）
+    static let visibleDepth = 3
+    /// 画面幅ぶん横へ動いたときの傾き（度）
     static let tiltPerWidth = 12.0
 
-    let role: DeckRole
+    let depth: Int
+    let count: Int
     let drag: Double
+    let pullOut: Double
+    /// 横へ引き出している最中なら、その位置
+    let pulledX: Double?
     let width: Double
 
-    func body(content: Content) -> some View {
-        let travel = width * Self.travelRatio
-        let leftProgress = min(max(-drag, 0) / travel, 1)
-        let rightProgress = min(max(drag, 0) / travel, 1)
-        let (x, rotation, scale): (Double, Double, Double) = switch role {
-        case .next:
-            // 上のカードが左へ飛んでいくほど、下から持ち上がってくる
-            (0, 0, Self.underScale + (1 - Self.underScale) * leftProgress)
-        case .current:
-            // 左へ払うと指について飛んでいく。右へ払うと前の日が上に重なるので、少し沈む
-            (min(drag, 0), min(drag, 0) / width * Self.tiltPerWidth, 1 - (1 - Self.underScale) * rightProgress)
-        case .previous:
-            // 画面の左外で待っていて、右へ払うと指について滑り込んでくる
-            (-travel + max(drag, 0), (-travel + max(drag, 0)) / width * Self.tiltPerWidth, 1)
-        }
-        content
-            .scaleEffect(scale)
-            .rotationEffect(.degrees(rotation), anchor: .bottom)
-            .offset(x: x)
-    }
-}
+    private struct Pose {
+        var x: Double, y: Double, rotation: Double, scale: Double, opacity: Double
 
-/// 山の中でのカードの役割（重なり順の下から）
-private enum DeckRole {
-    case next, current, previous
+        static func at(depth: Int) -> Pose {
+            switch depth {
+            case 0: Pose(x: 0, y: 0, rotation: 0, scale: 1, opacity: 1)
+            case 1: Pose(x: -8, y: 8, rotation: -3.5, scale: 0.96, opacity: 1)
+            case 2: Pose(x: 7, y: 14, rotation: 2.5, scale: 0.92, opacity: 1)
+            default: Pose(x: 0, y: 18, rotation: 0, scale: 0.9, opacity: 0)
+            }
+        }
+
+        func mixed(with other: Pose, _ t: Double) -> Pose {
+            func mix(_ a: Double, _ b: Double) -> Double { a + (b - a) * t }
+            return Pose(x: mix(x, other.x), y: mix(y, other.y), rotation: mix(rotation, other.rotation),
+                        scale: mix(scale, other.scale), opacity: mix(opacity, other.opacity))
+        }
+    }
+
+    func body(content: Content) -> some View {
+        let pose = currentPose()
+        content
+            .scaleEffect(pose.scale)
+            .rotationEffect(.degrees(pose.rotation), anchor: .bottom)
+            .offset(x: pose.x, y: pose.y)
+            .opacity(pose.opacity)
+    }
+
+    private func currentPose() -> Pose {
+        let tilt = { (x: Double) in x / width * Self.tiltPerWidth }
+        // 引き出し中のカードは山の横にいる（前へなら一番上に乗る前、次へなら一番後ろへ差し込む前）
+        if let pulledX {
+            return Pose(x: pulledX, y: 0, rotation: tilt(pulledX), scale: 1, opacity: 1)
+        }
+        let base = Pose.at(depth: depth)
+        let progress = min(abs(drag) / pullOut, 1)
+        if drag < 0 {
+            // 次へ: 一番上のカードが指について横へ出ていき、下のカードが1段ずつ持ち上がる
+            if depth == 0 { return Pose(x: drag, y: 0, rotation: tilt(drag), scale: 1, opacity: 1) }
+            return base.mixed(with: .at(depth: depth - 1), progress)
+        }
+        if drag > 0 {
+            // 前へ: 一番後ろのカードが指について横へ出てきて、ほかのカードは1段ずつ沈む
+            if depth == count - 1 {
+                let x = drag
+                return Pose(x: x, y: base.y * (1 - progress), rotation: tilt(x), scale: base.scale + (1 - base.scale) * progress, opacity: 1)
+            }
+            return base.mixed(with: .at(depth: depth + 1), progress)
+        }
+        return base
+    }
 }
