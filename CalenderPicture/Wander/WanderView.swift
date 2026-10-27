@@ -82,6 +82,12 @@ struct WanderView: View {
 /// キャラクターが動き回る 3D 空間（床・空・ライト・カメラ）。DanceImage の試作から移植。
 @MainActor
 final class WanderStage {
+    /// キャラクターの大きさ（元の高さ 1m に対する倍率）
+    static let characterScale: Float = 0.8
+    /// カメラの位置と見る先。床全体と、動き回るみんなが少し引いて見える距離
+    static let cameraPosition: SIMD3<Float> = [0, 3.6, 6.6]
+    static let cameraTarget: SIMD3<Float> = [0, 0.3, 0]
+
     private let characters = Entity()
 
     func setUp(in content: RealityViewCameraContent) {
@@ -111,7 +117,7 @@ final class WanderStage {
 
         let camera = PerspectiveCamera()
         camera.camera.fieldOfViewInDegrees = 50
-        camera.look(at: [0, 0.4, 0], from: [0, 2.6, 5.2], relativeTo: nil)
+        camera.look(at: Self.cameraTarget, from: Self.cameraPosition, relativeTo: nil)
         content.add(camera)
     }
 
@@ -149,6 +155,8 @@ final class WanderStage {
                 body.addChild(crayon)
                 let root = Entity()
                 root.addChild(body)
+                // 跳ねる高さも一緒に小さくなるよう、動かす単位ごと縮める
+                root.scale = .init(repeating: Self.characterScale)
 
                 var wander = WanderComponent()
                 wander.areaRadius = areaRadius

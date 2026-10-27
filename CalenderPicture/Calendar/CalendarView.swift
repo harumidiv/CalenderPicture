@@ -4,6 +4,7 @@
 //
 //  シートで開くカレンダー。DOOD のように月を縦に積み、登録済みの日はクレヨン画のシールを貼る。
 //  一番古い登録の月（少なくとも先月）から今月までを並べ、開いたときは今月を見せる。
+//  一番上の「前の月を表示」で、1か月ずつさかのぼれる。
 //  月ごとの「自動で登録」で、写真ライブラリからその月の未登録の日に1枚ずつ登録できる。
 //
 
@@ -22,40 +23,57 @@ struct CalendarView: View {
     @State private var toast: String?
     @State private var photoRequest: PhotoRequest?
     @State private var wanderMonth: MonthGrid?
+    /// 「前の月を表示」でさかのぼった月数
+    @State private var earlierMonths = 0
     /// シールを貼る順番の乱数の種。カレンダーを開くたびに変わる
     @State private var stickerSeed = UInt64.random(in: .min ... .max)
 
     var body: some View {
         let thisMonth = MonthGrid(containing: .today())
         let first = entries.first.map { MonthGrid(containing: $0.key) } ?? thisMonth
-        let months = MonthGrid.months(from: min(first, thisMonth.adding(months: -1)), through: thisMonth)
+        let earliest = min(first, thisMonth.adding(months: -1)).adding(months: -earlierMonths)
+        let months = MonthGrid.months(from: earliest, through: thisMonth)
         let entriesByKey = Dictionary(entries.map { ($0.dayKey, $0) }, uniquingKeysWith: { first, _ in first })
 
         VStack(spacing: 0) {
             header
 
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 36) {
-                    ForEach(months) { month in
-                        MonthSection(
-                            month: month,
-                            entriesByKey: entriesByKey,
-                            stickerSeed: stickerSeed,
-                            onSelect: { key in
-                                if entriesByKey[key.string] != nil { onSelectEntry(key) } else { photoRequest = PhotoRequest(day: key) }
-                            },
-                            onOpenWander: { wanderMonth = month },
-                            onAutoRegister: { autoRegister(month) },
-                            isAutoRegistering: autoProgress != nil
-                        )
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 36) {
+                        Button("前の月を表示", systemImage: "chevron.up") {
+                            earlierMonths += 1
+                            // 足した月が見出しから見えるよう、その月を上に合わせる
+                            let added = earliest.adding(months: -1)
+                            Task { withAnimation { proxy.scrollTo(added.id, anchor: .top) } }
+                        }
+                        .font(.system(.subheadline, design: .rounded).weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity)
+                        .accessibilityIdentifier("calendar-show-earlier")
+
+                        ForEach(months) { month in
+                            MonthSection(
+                                month: month,
+                                entriesByKey: entriesByKey,
+                                stickerSeed: stickerSeed,
+                                onSelect: { key in
+                                    if entriesByKey[key.string] != nil { onSelectEntry(key) } else { photoRequest = PhotoRequest(day: key) }
+                                },
+                                onOpenWander: { wanderMonth = month },
+                                onAutoRegister: { autoRegister(month) },
+                                isAutoRegistering: autoProgress != nil
+                            )
+                            .id(month.id)
+                        }
                     }
+                    .padding(.horizontal, 16)
+                    .padding(.top, 8)
+                    .padding(.bottom, 24)
                 }
-                .padding(.horizontal, 16)
-                .padding(.top, 8)
-                .padding(.bottom, 24)
+                // 新しい月が下に来るので、開いたときは一番下（今月）を見せる
+                .defaultScrollAnchor(.bottom, for: .initialOffset)
             }
-            // 新しい月が下に来るので、開いたときは一番下（今月）を見せる
-            .defaultScrollAnchor(.bottom)
         }
         .background(DoodStyle.surface.ignoresSafeArea())
         .overlay(alignment: .bottom) { statusBar }
