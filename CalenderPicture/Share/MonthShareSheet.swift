@@ -4,6 +4,7 @@
 //
 //  1か月ぶんのらくがきを、パステルの紙にばらばらに貼ったコラージュ1枚にして共有する。
 //  年月を大きく入れ、キャラクターは白いふちのシールに、紙ごとの絵は白いふちのカードにして紙いっぱいに敷き詰める。
+//  「おかわり」を押すたびに、今の並びはそのままで、同じ絵をもう一周ぶん、まだ空いている場所から貼り足す。
 //
 
 import SwiftUI
@@ -31,6 +32,10 @@ struct MonthShareSheet: View {
     @State private var rendered: UIImage?
     /// 並べ方の乱数の種。「シャッフル」で変える
     @State private var seed = UInt64.random(in: .min ... .max)
+    /// 「おかわり」で貼り足した段の乱数の種（押した順）
+    @State private var extraSeeds: [UInt64] = []
+    /// おかわりできる回数（多すぎると書き出しが重くなる）
+    private static let maxExtras = 5
     @State private var toast: String?
 
     var body: some View {
@@ -66,7 +71,7 @@ struct MonthShareSheet: View {
             }.value
             images = loaded
         }
-        .task(id: RenderKey(loaded: images != nil, seed: seed)) {
+        .task(id: RenderKey(loaded: images != nil, seed: seed, extraSeeds: extraSeeds)) {
             guard let images else { return }
             let renderer = ImageRenderer(content: poster(images)
                 .frame(width: MonthPoster.renderSize.width, height: MonthPoster.renderSize.height))
@@ -78,10 +83,12 @@ struct MonthShareSheet: View {
     private struct RenderKey: Equatable {
         let loaded: Bool
         let seed: UInt64
+        let extraSeeds: [UInt64]
     }
 
     private func poster(_ images: [DayKey: UIImage]) -> MonthPoster {
-        MonthPoster(month: share.month, images: images, cutouts: Set(share.stickers.filter(\.value.isCutout).keys), seed: seed)
+        MonthPoster(month: share.month, images: images, cutouts: Set(share.stickers.filter(\.value.isCutout).keys), seed: seed,
+                    extraSeeds: extraSeeds)
     }
 
     private var preview: some View {
@@ -106,8 +113,29 @@ struct MonthShareSheet: View {
                 .accessibilityLabel("閉じる")
                 .accessibilityIdentifier("month-share-close")
             Spacer()
+            Button {
+                withAnimation(.spring(duration: 0.4, bounce: 0.35)) { extraSeeds.append(.random(in: .min ... .max)) }
+            } label: {
+                Label(extraSeeds.isEmpty ? "おかわり" : "おかわり \(extraSeeds.count)", systemImage: "plus.square.on.square")
+                    .contentTransition(.numericText())
+            }
+            .font(.system(.subheadline, design: .rounded).weight(.semibold))
+            .foregroundStyle(.primary)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .background(DoodStyle.background, in: .capsule)
+            .buttonStyle(.plain)
+            .disabled(extraSeeds.count >= Self.maxExtras)
+            .opacity(extraSeeds.count >= Self.maxExtras ? 0.4 : 1)
+            .accessibilityLabel("同じ絵を上からもう一周貼る")
+            .accessibilityValue("\(extraSeeds.count)回")
+            .accessibilityIdentifier("month-share-more")
+            // シャッフルは、おかわりした回数はそのままで全部の並びを変える
             Button("シャッフル", systemImage: "shuffle") {
-                withAnimation(.spring(duration: 0.45, bounce: 0.3)) { seed = .random(in: .min ... .max) }
+                withAnimation(.spring(duration: 0.45, bounce: 0.3)) {
+                    seed = .random(in: .min ... .max)
+                    extraSeeds = extraSeeds.map { _ in .random(in: .min ... .max) }
+                }
             }
             .font(.system(.subheadline, design: .rounded).weight(.semibold))
             .foregroundStyle(.primary)
@@ -173,10 +201,12 @@ struct MonthPoster: View {
     let images: [DayKey: UIImage]
     let cutouts: Set<DayKey>
     let seed: UInt64
+    /// おかわりで上から貼り足す段の種（空なら1周だけ）
+    var extraSeeds: [UInt64] = []
 
     private let ink = Color(red: 0.16, green: 0.17, blue: 0.24)
     /// 絵をかぶせない場所: 左上の年月の見出しと、右下の小さな文字
-    static let reserved = [CGRect(x: 0, y: 0, width: 200, height: 150), CGRect(x: 250, y: 425, width: 110, height: 25)]
+    static let reserved = [CGRect(x: 0, y: 0, width: 170, height: 150), CGRect(x: 250, y: 425, width: 110, height: 25)]
 
     /// 月ごとの紙の色（季節に合わせたパステル）
     private static let papers: [Color] = [
@@ -207,18 +237,24 @@ struct MonthPoster: View {
             let u = geometry.size.width / Self.renderSize.width
             let size = Self.renderSize
             let keys = images.keys.sorted()
-            let placements = CollageLayout.place(count: keys.count, in: CGRect(origin: .zero, size: size).insetBy(dx: 12, dy: 14),
-                                                 avoiding: Self.reserved, seed: seed)
+            let paper = CGRect(origin: .zero, size: size).insetBy(dx: 12, dy: 14)
+            // 段ごとに同じ絵を1枚ずつ貼る。おかわりの段は、それまでの段で埋まっていない場所から埋める
+            let layers = ([seed] + extraSeeds).enumerated().reduce(into: [[(id: String, key: DayKey, placement: CollageLayout.Placement)]]()) { result, layer in
+                let below = result.flatMap { $0.map(\.placement) }
+                let placements = CollageLayout.place(count: keys.count, in: paper, avoiding: Self.reserved, seed: layer.element, over: below)
+                result.append(zip(keys, placements).map { (id: "\(layer.offset)-\($0.string)", key: $0, placement: $1) })
+            }
 
             ZStack(alignment: .topLeading) {
                 Self.papers[(month.month - 1) % 12]
 
                 decorations(in: size, unit: u)
 
-                ForEach(Array(zip(keys, placements)), id: \.0) { key, placement in
-                    sticker(images[key]!, isCutout: cutouts.contains(key), size: placement.size * u)
-                        .rotationEffect(.degrees(placement.rotation))
-                        .position(x: placement.center.x * u, y: placement.center.y * u)
+                ForEach(layers.flatMap { $0 }, id: \.id) { item in
+                    sticker(images[item.key]!, isCutout: cutouts.contains(item.key), size: item.placement.size * u)
+                        .rotationEffect(.degrees(item.placement.rotation))
+                        .position(x: item.placement.center.x * u, y: item.placement.center.y * u)
+                        .transition(.scale(scale: 1.4).combined(with: .opacity))
                 }
 
                 header(unit: u)

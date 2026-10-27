@@ -24,27 +24,36 @@ nonisolated enum CollageLayout {
     static let coverage: CGFloat = 1.7
     /// 紙の外にはみ出してよい割合（一辺に対して）。端まで絵があるように見せる
     static let bleed: CGFloat = 0.15
+    /// おかわりで貼り足すときにはみ出してよい割合。大きいまま端や角の隙間にも届くよう、1段目より多く許す
+    static let extraBleed: CGFloat = 0.3
     /// 傾きの最大（度）
     static let maxRotation = 14.0
     /// 埋まり具合を数えるマス目の細かさ（紙の長辺あたり）
     private static let resolution = 40
 
-    /// `count` 枚を `bounds` に敷き詰めて置く。`reserved`（見出しなど）にはできるだけかぶせない
-    static func place(count: Int, in bounds: CGRect, avoiding reserved: [CGRect], seed: UInt64) -> [Placement] {
+    /// `count` 枚を `bounds` に敷き詰めて置く。`reserved`（見出しなど）にはできるだけかぶせない。
+    /// `existing` にすでに貼ってある絵を渡すと、その上で空いている場所から埋める（おかわりで貼り足すとき）
+    static func place(count: Int, in bounds: CGRect, avoiding reserved: [CGRect], seed: UInt64,
+                      over existing: [Placement] = []) -> [Placement] {
         guard count > 0, bounds.width > 0, bounds.height > 0 else { return [] }
         var random = SplitMix64(state: seed)
         // 枚数が少ないほど大きく
         let base = min(max((bounds.width * bounds.height * coverage / CGFloat(count)).squareRoot(), bounds.width * 0.26),
                        bounds.width * 0.85)
         var paper = CoverageGrid(bounds: bounds, resolution: resolution, reserved: reserved)
+        for placement in existing { paper.cover(center: placement.center, radius: placement.size * coveredRadius) }
+        // 貼り足しは残った細かい隙間を探すので、候補を多めに試し、はみ出しも多めに許す
+        let isExtra = !existing.isEmpty
+        let tries = isExtra ? candidates * 3 : candidates
+        let overhang = isExtra ? extraBleed : bleed
         // 大きい絵から置くと、小さい絵が隙間を埋めてきれいに詰まる
         let sizes = (0..<count).map { _ in base * .random(in: 0.85...1.15, using: &random) }.sorted(by: >)
         var placed: [Placement] = []
         for size in sizes {
-            let inset = size * (0.5 - bleed)
+            let inset = size * (0.5 - overhang)
             let area = bounds.insetBy(dx: inset, dy: inset)
             var best: (placement: Placement, score: CGFloat)?
-            for _ in 0..<candidates {
+            for _ in 0..<tries {
                 let center = CGPoint(x: .random(in: area.minX...max(area.minX, area.maxX), using: &random),
                                      y: .random(in: area.minY...max(area.minY, area.maxY), using: &random))
                 let placement = Placement(center: center, size: size,

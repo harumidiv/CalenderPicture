@@ -188,6 +188,17 @@ final class CardUITests: XCTestCase {
         saveScreenshot("month-share")
         copy.tap()
         XCTAssertTrue(app.staticTexts["month-share-toast"].waitForExistence(timeout: 5))
+
+        // おかわりで同じ絵を上から貼り足せる（回数には上限がある）
+        let more = app.buttons["month-share-more"]
+        more.tap()
+        more.tap()
+        XCTAssertEqual(more.value as? String, "2回")
+        sleep(1)
+        saveScreenshot("month-share-more")
+        for _ in 0..<5 where more.isEnabled { more.tap() }
+        XCTAssertEqual(more.value as? String, "5回")
+        XCTAssertFalse(more.isEnabled)
         app.buttons["month-share-close"].tap()
         XCTAssertTrue(app.buttons["month-share-close"].waitForNonExistence(timeout: 5))
     }

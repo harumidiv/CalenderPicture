@@ -54,4 +54,14 @@ struct CollageLayoutTests {
     @Test func noStickersForEmptyMonth() {
         #expect(CollageLayout.place(count: 0, in: bounds, avoiding: reserved, seed: 1).isEmpty)
     }
+
+    @Test func extraLayerFillsRemainingGaps() {
+        let first = CollageLayout.place(count: 4, in: bounds, avoiding: reserved, seed: 9)
+        let extra = CollageLayout.place(count: 4, in: bounds, avoiding: reserved, seed: 10, over: first)
+        let before = CollageLayout.filledRatio(of: first, in: bounds, avoiding: reserved)
+        let after = CollageLayout.filledRatio(of: first + extra, in: bounds, avoiding: reserved)
+        #expect(after > before + 0.1, "おかわりで隙間が埋まっていない")
+        // 大きさは1段目と同じ範囲
+        #expect(extra.map(\.size).max()! > first.map(\.size).min()! * 0.8)
+    }
 }
