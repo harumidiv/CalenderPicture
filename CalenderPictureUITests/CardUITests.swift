@@ -173,4 +173,22 @@ final class CardUITests: XCTestCase {
         XCTAssertTrue(app.buttons["share-close"].waitForNonExistence(timeout: 5))
         waitForDate(day: 10)
     }
+
+    /// カレンダーから、その月のらくがきを並べた1枚の画像を共有できる
+    func testMonthShareMakesImage() {
+        let now = calendar.dateComponents([.year, .month], from: Date())
+        let share = app.buttons["month-share-\(now.year!)-\(now.month!)"]
+        XCTAssertTrue(share.waitForExistence(timeout: 5))
+        share.tap()
+        let copy = app.buttons["month-share-copy"]
+        XCTAssertTrue(copy.waitForExistence(timeout: 5))
+        expectation(for: NSPredicate(format: "isEnabled == true"), evaluatedWith: copy)
+        waitForExpectations(timeout: 10)
+        sleep(1)
+        saveScreenshot("month-share")
+        copy.tap()
+        XCTAssertTrue(app.staticTexts["month-share-toast"].waitForExistence(timeout: 5))
+        app.buttons["month-share-close"].tap()
+        XCTAssertTrue(app.buttons["month-share-close"].waitForNonExistence(timeout: 5))
+    }
 }

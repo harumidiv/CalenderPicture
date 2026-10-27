@@ -3,10 +3,9 @@
 //  CalenderPicture
 //
 //  シェアのプレビューシート。DOOD のように元写真を背景に敷き、その上にカードを重ねた画像を作って、
-//  共有・写真に保存・コピーする。
+//  写真に保存・コピーする。共有ボタンでは、変換したクレヨン画そのものを渡す。
 //
 
-import Photos
 import SwiftUI
 import UIKit
 
@@ -18,7 +17,7 @@ struct ShareSheet: View {
     @State private var images: (drawing: UIImage, original: UIImage)?
     /// 背景に元写真を敷くか（オフなら無地）
     @State private var showsPhoto = true
-    /// 共有・保存する書き出し済みの画像
+    /// 保存・コピーする書き出し済みの画像（写真の上にカードを重ねたもの）
     @State private var rendered: UIImage?
     @State private var toast: String?
 
@@ -75,7 +74,7 @@ struct ShareSheet: View {
         }
         .aspectRatio(SharePoster.aspectRatio, contentMode: .fit)
         .clipShape(.rect(cornerRadius: 28))
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // ボタンはプレビュー画像の角から内側に置く（外側の枠に合わせると、縮んだ画像の上端からはみ出す）
         .overlay(alignment: .topLeading) {
             Button(action: onClose) { overlayIcon("xmark") }
                 .accessibilityLabel("閉じる")
@@ -91,6 +90,7 @@ struct ShareSheet: View {
             .padding(14)
         }
         .buttonStyle(.plain)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     /// プレビューに重ねる半透明の丸いボタン
@@ -106,8 +106,8 @@ struct ShareSheet: View {
     private var actions: some View {
         HStack(spacing: 10) {
             Group {
-                if let rendered {
-                    let image = Image(uiImage: rendered)
+                if let drawing = images?.drawing {
+                    let image = Image(uiImage: drawing)
                     ShareLink(item: image, preview: SharePreview(footnote, image: image)) {
                         CircleIcon(systemName: "square.and.arrow.up", size: 50, isProminent: true)
                     }
@@ -116,21 +116,23 @@ struct ShareSheet: View {
                         .opacity(0.4)
                 }
             }
-            .accessibilityLabel("共有")
+            .accessibilityLabel("クレヨン画を共有")
             .accessibilityIdentifier("share-link")
 
-            Button("保存", systemImage: "square.and.arrow.down", action: save)
+            Group {
+                Button("保存", systemImage: "square.and.arrow.down", action: save)
+                    .buttonStyle(.pill)
+                    .accessibilityIdentifier("share-save")
+                Button("コピー", systemImage: "doc.on.doc") {
+                    guard let rendered else { return }
+                    UIPasteboard.general.image = rendered
+                    show("コピーしました")
+                }
                 .buttonStyle(.pill)
-                .accessibilityIdentifier("share-save")
-            Button("コピー", systemImage: "doc.on.doc") {
-                guard let rendered else { return }
-                UIPasteboard.general.image = rendered
-                show("コピーしました")
+                .accessibilityIdentifier("share-copy")
             }
-            .buttonStyle(.pill)
-            .accessibilityIdentifier("share-copy")
+            .disabled(rendered == nil)
         }
-        .disabled(rendered == nil)
     }
 
     private func render(_ images: (drawing: UIImage, original: UIImage)) -> UIImage? {
@@ -143,21 +145,7 @@ struct ShareSheet: View {
 
     private func save() {
         guard let rendered else { return }
-        Task {
-            let status = await PHPhotoLibrary.requestAuthorization(for: .addOnly)
-            guard status == .authorized || status == .limited else {
-                show("写真への保存が許可されていません")
-                return
-            }
-            do {
-                try await PHPhotoLibrary.shared().performChanges {
-                    PHAssetChangeRequest.creationRequestForAsset(from: rendered)
-                }
-                show("写真に保存しました")
-            } catch {
-                show("保存できませんでした")
-            }
-        }
+        Task { show(await PhotoSaver.save(rendered)) }
     }
 
     private func show(_ message: String) {

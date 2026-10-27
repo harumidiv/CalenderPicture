@@ -6,6 +6,7 @@
 //  一番古い登録の月（少なくとも先月）から今月までを並べ、開いたときは今月を見せる。
 //  一番上の「前の月を表示」で、1か月ずつさかのぼれる。
 //  月ごとの「自動で登録」で、写真ライブラリからその月の未登録の日に1枚ずつ登録できる。
+//  月ごとの共有ボタンで、その月のらくがきをカレンダーの形に並べた1枚の画像を共有できる。
 //
 
 import SwiftData
@@ -23,6 +24,7 @@ struct CalendarView: View {
     @State private var toast: String?
     @State private var photoRequest: PhotoRequest?
     @State private var wanderMonth: MonthGrid?
+    @State private var sharingMonth: MonthShare?
     /// 「前の月を表示」でさかのぼった月数
     @State private var earlierMonths = 0
     /// シールを貼る順番の乱数の種。カレンダーを開くたびに変わる
@@ -62,6 +64,7 @@ struct CalendarView: View {
                                 },
                                 onOpenWander: { wanderMonth = month },
                                 onAutoRegister: { autoRegister(month) },
+                                onShare: { sharingMonth = share(of: month, entriesByKey: entriesByKey) },
                                 isAutoRegistering: autoProgress != nil
                             )
                             .id(month.id)
@@ -80,6 +83,9 @@ struct CalendarView: View {
         .presentationDragIndicator(.visible)
         .onDisappear { autoTask?.cancel() }
         .photoRegistration($photoRequest)
+        .sheet(item: $sharingMonth) { share in
+            MonthShareSheet(share: share) { sharingMonth = nil }
+        }
         .fullScreenCover(item: $wanderMonth) { month in
             WanderView(month: month) { wanderMonth = nil }
         }
@@ -118,6 +124,15 @@ struct CalendarView: View {
         .padding(.bottom, 16)
         .opacity(autoProgress == nil && toast == nil ? 0 : 1)
         .animation(.easeInOut(duration: 0.2), value: autoProgress == nil && toast == nil)
+    }
+
+    /// その月に登録した日の絵（切り抜けた日はキャラクター、そうでない日は紙ごとのクレヨン画）
+    private func share(of month: MonthGrid, entriesByKey: [String: DiaryEntry]) -> MonthShare {
+        let stickers = month.cells().compactMap { $0 }.reduce(into: [DayKey: MonthSticker]()) { result, key in
+            guard let entry = entriesByKey[key.string] else { return }
+            result[key] = MonthSticker(data: entry.characterData ?? entry.drawingData, isCutout: entry.characterData != nil)
+        }
+        return MonthShare(month: month, stickers: stickers)
     }
 
     private func autoRegister(_ month: MonthGrid) {
@@ -169,6 +184,7 @@ private struct MonthSection: View {
     var onSelect: (DayKey) -> Void
     var onOpenWander: () -> Void
     var onAutoRegister: () -> Void
+    var onShare: () -> Void
     var isAutoRegistering: Bool
 
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 4), count: 7)
@@ -194,6 +210,14 @@ private struct MonthSection: View {
                     .disabled(isAutoRegistering)
                     .accessibilityLabel("\(month.title)の未登録の日を写真から自動で登録")
                     .accessibilityIdentifier("auto-register-\(month.id)")
+                let hasEntries = cells.contains { $0.map { entriesByKey[$0.string] != nil } ?? false }
+                Button("\(month.title)のらくがきを1枚にして共有", systemImage: "square.and.arrow.up", action: onShare)
+                    .labelStyle(.iconOnly)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .opacity(hasEntries ? 1 : 0.35)
+                    .disabled(!hasEntries)
+                    .accessibilityIdentifier("month-share-\(month.id)")
                 Button("\(month.title)のキャラクターを動かす", systemImage: "figure.walk", action: onOpenWander)
                     .labelStyle(.iconOnly)
                     .font(.subheadline.weight(.semibold))
