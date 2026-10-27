@@ -48,9 +48,13 @@ final class EmptyDaysUITests: XCTestCase {
             let date = app.buttons["card-date"]
             expectation(for: NSPredicate(format: "label == %@", dateLabel(daysAgo: 1)), evaluatedWith: date)
             waitForExpectations(timeout: 5)
+            sleep(1)  // めくるアニメーションが終わるまで待つ（途中のタップは山に取られる）
         }
 
-        app.buttons["card-empty"].tap()
+        let card = app.buttons["card-empty"]
+        expectation(for: NSPredicate(format: "isHittable == true"), evaluatedWith: card)
+        waitForExpectations(timeout: 5)
+        card.tap()
         sleep(3)  // ピッカーの表示を待つ
         app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 66, dy: 380)).tap()
 

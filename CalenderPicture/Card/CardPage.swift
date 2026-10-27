@@ -59,8 +59,10 @@ struct EmptyDayCard: View {
     var onTap: () -> Void
 
     var body: some View {
+        // 影は紙の面にだけ付ける（あとから重ねる文字には付けない）
         RoundedRectangle(cornerRadius: 16)
             .fill(Color(red: 0.98, green: 0.975, blue: 0.965))
+            .shadow(color: .black.opacity(0.14), radius: 10, y: 5)
             .overlay {
                 RoundedRectangle(cornerRadius: 12)
                     .strokeBorder(Color.black.opacity(0.12), style: StrokeStyle(lineWidth: 1.5, dash: [6, 5]))
@@ -81,7 +83,6 @@ struct EmptyDayCard: View {
                     .foregroundStyle(Color(white: 0.5))
                     .padding(.bottom, 24)
             }
-            .shadow(color: .black.opacity(0.14), radius: 10, y: 5)
             .contentShape(.rect)
             .onTapGesture(perform: onTap)
             .accessibilityElement(children: .ignore)
