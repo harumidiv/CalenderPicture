@@ -10,9 +10,14 @@ import SwiftUI
 import UIKit
 
 struct CardDeck: View {
-    /// 1日分のカードの中身（削除済みのモデルを非同期処理から触らないよう値で持つ）
+    /// 1日分のカード。写真が未登録の日は `photo` が nil（タップで写真を追加するカード）
     struct Item {
         let key: DayKey
+        let photo: Photo?
+    }
+
+    /// 登録済みの写真（削除済みのモデルを非同期処理から触らないよう値で持つ）
+    struct Photo {
         let drawing: Data
         let original: Data
         let version: Date
@@ -20,9 +25,11 @@ struct CardDeck: View {
 
     let items: [Item]
     @Binding var selection: DayKey
+    /// 未登録の日のカードをタップしたとき
+    var onAddPhoto: (DayKey) -> Void = { _ in }
 
     /// カードの幅（画面幅に対する割合）と縦横比。DOOD のように画面の中央に小さめに置く
-    static let cardWidthRatio = 0.58
+    static let cardWidthRatio = 0.66
     static let cardAspectRatio = 0.71
 
     /// 指の移動量（先がない方向は抑えた値）。左が負
@@ -54,10 +61,9 @@ struct CardDeck: View {
                 ForEach(visibleCards(current: index), id: \.item.key) { card in
                     CardPage(
                         key: card.item.key,
-                        drawingData: card.item.drawing,
-                        originalData: card.item.original,
-                        version: card.item.version,
-                        isCurrent: card.depth == 0
+                        photo: card.item.photo,
+                        isCurrent: card.depth == 0,
+                        onAddPhoto: { onAddPhoto(card.item.key) }
                     )
                     .frame(width: cardWidth, height: cardHeight)
                     .modifier(DeckPlacement(
@@ -240,4 +246,8 @@ private struct DeckPlacement: ViewModifier {
         }
         return base
     }
+}
+
+extension CardDeck.Item: Identifiable {
+    var id: DayKey { key }
 }

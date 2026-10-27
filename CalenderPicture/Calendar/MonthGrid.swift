@@ -7,7 +7,7 @@
 
 import Foundation
 
-nonisolated struct MonthGrid: Hashable, Sendable {
+nonisolated struct MonthGrid: Hashable, Comparable, Sendable {
     let year: Int
     let month: Int
 
@@ -36,8 +36,23 @@ nonisolated struct MonthGrid: Hashable, Sendable {
     }
 
     func adding(months: Int) -> MonthGrid {
-        let index = year * 12 + (month - 1) + months
+        let index = monthIndex + months
         return MonthGrid(year: Int((Double(index) / 12).rounded(.down)), month: ((index % 12) + 12) % 12 + 1)
+    }
+
+    /// `start` の月から `end` の月まで（両端を含む昇順）。`start` が `end` より後なら `end` の月だけ。
+    static func months(from start: MonthGrid, through end: MonthGrid) -> [MonthGrid] {
+        let count = max(end.monthIndex - start.monthIndex, 0)
+        return (0...count).map { end.adding(months: $0 - count) }
+    }
+
+    static func < (lhs: MonthGrid, rhs: MonthGrid) -> Bool {
+        lhs.monthIndex < rhs.monthIndex
+    }
+
+    /// 西暦0年1月からの通算の月
+    private var monthIndex: Int {
+        year * 12 + (month - 1)
     }
 
     /// 週の始まりから並べた曜日の短い表記。

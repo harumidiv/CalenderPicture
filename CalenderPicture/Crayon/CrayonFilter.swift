@@ -51,8 +51,11 @@ nonisolated enum CrayonFilter {
         // 顔の中だけ強くぼかし、目鼻口などの小さなパーツを消す（髪や陰影などの大きな形は残る）
         image = softenFaces(faces, in: image)
 
-        // 3. 主役の色だけでパレットを作り、大胆に減色して数色の塊にする
+        // 暗い写真は、主役の中間の明るさだけを持ち上げる（黒と白の点や色味は変えない）
         let subjectBox = box.applying(toCanvas)
+        image = brightened(image, mask: mask, in: subjectBox)
+
+        // 3. 主役の色だけでパレットを作り、大胆に減色して数色の塊にする
         let palette = makePalette(from: image, mask: mask, in: subjectBox)
         let detail: CGFloat = 70  // 主役を何 px まで縮めて単純化するか。小さいほど大胆
         var flat = simplified(image, palette: palette, scale: detail / max(subjectBox.width, subjectBox.height), unit: unit)
@@ -90,7 +93,7 @@ nonisolated enum CrayonFilter {
 
         // 塗りに濃淡をつけ、粒の明るい部分は紙の色を見せる
         let paper = CIImage(color: paperColor)
-        let shade = gain(grain, k: -0.45, bias: 1.15)
+        let shade = gain(grain, k: -0.3, bias: 1.1)
         var drawing = shade.applyingFilter("CIMultiplyCompositing", parameters: [kCIInputBackgroundImageKey: flat])
         drawing = paper.applyingFilter("CIBlendWithMask", parameters: [
             kCIInputBackgroundImageKey: drawing,
@@ -124,6 +127,13 @@ nonisolated enum CrayonFilter {
     }
 
     // MARK: - 切り抜き・検出
+
+    /// 主役（人・ペット・物）を切り抜ける写真か
+    static func hasSubject(in cgImage: CGImage) -> Bool {
+        let request = VNGenerateForegroundInstanceMaskRequest()
+        try? VNImageRequestHandler(cgImage: cgImage).perform([request])
+        return !(request.results?.first?.allInstances.isEmpty ?? true)
+    }
 
     /// 主役（前景の人・物）のマスク（主役 = 白）
     private static func foregroundMask(in cgImage: CGImage, extent: CGRect) -> CIImage? {
@@ -170,6 +180,43 @@ nonisolated enum CrayonFilter {
         }
     }
 
+    // MARK: - 明るさ
+
+    /// 主役の平均の明るさをこの値に近づける（0〜1、ガンマ空間）
+    static let targetLuma: CGFloat = 0.56
+    /// 持ち上げすぎて写真の印象が変わらないよう、ガンマの指数はこれより小さくしない
+    static let minimumPower: CGFloat = 0.6
+
+    /// 平均の明るさ `luma` を `targetLuma` へ持ち上げるガンマの指数（1 なら変えない）。明るい写真は暗くしない
+    static func brighteningPower(forLuma luma: CGFloat) -> CGFloat {
+        guard luma > 0.001, luma < targetLuma else { return 1 }
+        return max(log(targetLuma) / log(luma), minimumPower)
+    }
+
+    /// 主役の部分の平均の明るさに合わせて、ガンマで中間調を持ち上げる
+    private static func brightened(_ image: CIImage, mask: CIImage, in box: CGRect) -> CIImage {
+        let masked = image.applyingFilter("CIBlendWithMask", parameters: [
+            kCIInputBackgroundImageKey: CIImage(color: .black),
+            kCIInputMaskImageKey: mask,
+        ])
+        let color = average(of: masked, in: box)
+        let coverage = average(of: mask, in: box)[0]
+        guard coverage > 0.01 else { return image }
+        let luma = (0.299 * color[0] + 0.587 * color[1] + 0.114 * color[2]) / coverage
+        let power = brighteningPower(forLuma: luma)
+        guard power < 1 else { return image }
+        return image.applyingFilter("CIGammaAdjust", parameters: ["inputPower": power])
+    }
+
+    /// 範囲内の平均色（RGB, 0〜1）
+    private static func average(of image: CIImage, in box: CGRect) -> [CGFloat] {
+        let average = image.applyingFilter("CIAreaAverage", parameters: [kCIInputExtentKey: CIVector(cgRect: box)])
+        var pixel = [Float](repeating: 0, count: 4)
+        context.render(average, toBitmap: &pixel, rowBytes: 16, bounds: average.extent,
+                       format: .RGBAf, colorSpace: nil)
+        return pixel.prefix(3).map { CGFloat($0) }
+    }
+
     // MARK: - 単純化
 
     /// 主役の部分から代表色を k-means で抽出し、クレヨンらしく彩度を上げたパレットを作る
@@ -191,9 +238,14 @@ nonisolated enum CrayonFilter {
             ])
             // アルファには各色の出現割合が入っているので 1 に戻す
             .settingAlphaOne(in: CGRect(x: 0, y: 0, width: count, height: 1))
-            .applyingFilter("CIColorControls", parameters: [
-                kCIInputSaturationKey: 1.5,
-                kCIInputBrightnessKey: 0.05,
+            .applyingFilter("CIColorControls", parameters: [kCIInputSaturationKey: 1.5])
+            // クレヨンは真っ黒にはならないので、暗い色ほど少し持ち上げる（明るい色はほぼそのまま）
+            .applyingFilter("CIToneCurve", parameters: [
+                "inputPoint0": CIVector(x: 0, y: 0.1),
+                "inputPoint1": CIVector(x: 0.25, y: 0.33),
+                "inputPoint2": CIVector(x: 0.5, y: 0.57),
+                "inputPoint3": CIVector(x: 0.75, y: 0.79),
+                "inputPoint4": CIVector(x: 1, y: 1),
             ])
     }
 

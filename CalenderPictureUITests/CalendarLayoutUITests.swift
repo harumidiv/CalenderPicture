@@ -15,6 +15,7 @@ final class CalendarLayoutUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["-inMemoryStore"]
         app.launch()
+        app.buttons["card-date"].tap()
         XCUIDevice.shared.orientation = .landscapeLeft
         sleep(1)
 

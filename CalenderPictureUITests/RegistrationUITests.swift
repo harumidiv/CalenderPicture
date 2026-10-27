@@ -15,6 +15,20 @@ final class RegistrationUITests: XCTestCase {
         app = XCUIApplication()
         app.launchArguments = ["-inMemoryStore"]
         app.launch()
+        openCalendar()
+    }
+
+    /// 日付のピルを押してカレンダーのシートを開く
+    func openCalendar() {
+        let pill = app.buttons["card-date"]
+        XCTAssertTrue(pill.waitForExistence(timeout: 5))
+        pill.tap()
+        // シートが開くアニメーション中のタップは無視されるので、開ききるまで待つ
+        let close = app.buttons["calendar-close"]
+        XCTAssertTrue(close.waitForExistence(timeout: 5))
+        expectation(for: NSPredicate(format: "isHittable == true"), evaluatedWith: close)
+        waitForExpectations(timeout: 5)
+        sleep(1)
     }
 
     /// 環境変数 SCREENSHOT_DIR があれば、そこにスクリーンショットを書き出す（目視確認用）
@@ -65,6 +79,7 @@ final class RegistrationUITests: XCTestCase {
         app.terminate()
         app.launchArguments = ["-resetStore"]
         app.launch()
+        openCalendar()
 
         let cell = app.buttons[dayKey(7)]
         XCTAssertTrue(cell.waitForExistence(timeout: 5))
@@ -81,6 +96,7 @@ final class RegistrationUITests: XCTestCase {
         app.terminate()
         app.launchArguments = []
         app.launch()
+        openCalendar()
         let relaunchedCell = app.buttons[dayKey(7)]
         XCTAssertTrue(relaunchedCell.waitForExistence(timeout: 5))
         XCTAssertEqual(relaunchedCell.value as? String, "登録済み")

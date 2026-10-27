@@ -6,6 +6,7 @@
 //
 
 import PhotosUI
+import SwiftData
 import SwiftUI
 import UIKit
 

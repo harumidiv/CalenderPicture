@@ -52,6 +52,18 @@ nonisolated struct DayKey: Hashable, Comparable, Codable, Sendable {
         return calendar
     }
 
+    /// `days` 日あとの日（負なら前の日）。
+    func adding(days: Int) -> DayKey {
+        let utc = Self.gregorian(timeZone: TimeZone(identifier: "UTC")!)
+        return DayKey(date: utc.date(byAdding: .day, value: days, to: date(in: utc))!, calendar: utc)
+    }
+
+    /// `start` から `end` まで（両端を含む昇順）。`start` が後なら空。
+    static func days(from start: DayKey, through end: DayKey) -> [DayKey] {
+        guard start <= end else { return [] }
+        return Array(sequence(first: start) { $0 < end ? $0.adding(days: 1) : nil })
+    }
+
     static func today(calendar: Calendar = .current) -> DayKey {
         DayKey(date: Date(), calendar: calendar)
     }

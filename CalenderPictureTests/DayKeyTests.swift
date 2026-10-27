@@ -8,6 +8,17 @@ import Testing
 @testable import CalenderPicture
 
 struct DayKeyTests {
+    @Test func addingDaysCrossesMonthAndYear() {
+        #expect(DayKey(year: 2026, month: 12, day: 31).adding(days: 1) == DayKey(year: 2027, month: 1, day: 1))
+        #expect(DayKey(year: 2028, month: 3, day: 1).adding(days: -1) == DayKey(year: 2028, month: 2, day: 29))
+    }
+
+    @Test func daysRangeIncludesBothEnds() {
+        let days = DayKey.days(from: DayKey(year: 2026, month: 9, day: 29), through: DayKey(year: 2026, month: 10, day: 2))
+        #expect(days.map(\.string) == ["2026-09-29", "2026-09-30", "2026-10-01", "2026-10-02"])
+        #expect(DayKey.days(from: DayKey(year: 2026, month: 10, day: 2), through: DayKey(year: 2026, month: 10, day: 1)).isEmpty)
+    }
+
     @Test func stringIsZeroPadded() {
         #expect(DayKey(year: 2026, month: 3, day: 5).string == "2026-03-05")
     }
