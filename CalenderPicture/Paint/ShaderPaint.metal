@@ -151,10 +151,23 @@ PAINT_KERNEL(paintPaperCut) {
 /// 大きな画素に縮め、ディザで減色する。主役にはドットのフチ取りをつける
 PAINT_KERNEL(paintPixelArt) {
     PAINT_BEGIN
-    const float cell = 8;
+    // 1 ドットの大きさ（基準の長辺 676 px に対して）。大きいほど粗い
+    const float cell = 10;
     float2 p = floor(fp / cell);
     float2 center = (p + 0.5) * cell * px;
-    float3 c = saturated(rgb(photo, center), 1.25);
+    // ドットが大きいと 1 点だけでは色がばらつくので、ドットの中の 3×3 点から平均にいちばん近い色を使う
+    // （平均そのものだと、色の境目のドットが花びらと空の間の紫のような、写真にない色になる）
+    float3 samples[9];
+    float3 sum = 0;
+    for (int i = 0; i < 9; i++) {
+        samples[i] = rgb(photo, center + float2(i % 3 - 1, i / 3 - 1) * cell * 0.3 * px);
+        sum += samples[i];
+    }
+    float3 c = samples[0];
+    for (int i = 1; i < 9; i++) {
+        if (distance_squared(samples[i], sum / 9) < distance_squared(c, sum / 9)) c = samples[i];
+    }
+    c = saturated(c, 1.25);
     // 4 段に減色し、段の境目だけ少しディザで混ぜる（強くかけると平らな面まで市松模様になる）
     c = saturate(floor(c * 4 + 0.5 + (bayer4(p) - 0.5) * 0.7) / 4);
 
