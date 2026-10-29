@@ -17,20 +17,52 @@ nonisolated struct CrayonResult {
     let photoCutout: CGImage?
 }
 
-/// 写真の主役（人・物）を切り抜き、白い紙にクレヨンでらくがきしたような絵に変換する
+/// 写真の主役（人・物）を切り抜き、白い紙にクレヨンでらくがきしたような絵に変換する。
+/// 主役の切り抜きなどの下ごしらえ（`canvas(for:)`）は、ほかの塗り方でも使う
 nonisolated enum CrayonFilter {
     // しきい値を直感的に扱えるよう、ガンマ空間のまま処理する
-    private static let context = CIContext(options: [.workingColorSpace: NSNull()])
-    private static let paperColor = CIColor(red: 0.98, green: 0.975, blue: 0.965)
+    static let context = CIContext(options: [.workingColorSpace: NSNull()])
+    static let paperColor = CIColor(red: 0.98, green: 0.975, blue: 0.965)
     private static let outputLongSide: CGFloat = 1200
 
-    static func apply(to cgImage: CGImage) -> CrayonResult? {
+    /// 主役を中心にしたキャンバスへ写真を置いたもの（どの塗り方でも共通の下ごしらえ）
+    struct Canvas {
+        let source: CIImage
+        /// 元写真の座標での主役のマスク。切り抜けなかったとき（顕著性や四角で代用したとき）は nil
+        let foreground: CIImage?
+        /// 元写真の座標での主役を囲む矩形
+        let box: CGRect
+        /// キャンバスに置いた写真（顔のぼかし・明るさの補正済み）
+        let image: CIImage
+        /// キャンバスの座標での主役のマスク（主役 = 白）
+        let mask: CIImage
+        /// キャンバスの座標での主役を囲む矩形
+        let subjectBox: CGRect
+        let extent: CGRect
+        /// 解像度に依存しないための基準
+        let unit: CGFloat
+
+        /// 元写真を主役の形に切り抜いたもの（Apple の切り抜きの輪郭そのまま）
+        var photoCutout: CGImage? {
+            foreground.flatMap { mask in
+                let cutout = source.applyingFilter("CIBlendWithMask", parameters: [
+                    kCIInputBackgroundImageKey: CIImage.clear,
+                    kCIInputMaskImageKey: mask,
+                ])
+                return context.createCGImage(cutout.cropped(to: box), from: box)
+            }
+        }
+    }
+
+    static func canvas(for cgImage: CGImage) -> Canvas {
         let source = CIImage(cgImage: cgImage)
         let sourceExtent = source.extent
 
-        // 1. 主役を切り抜く（見つからなければ写真全体を少し内側に寄せた四角で使う）
+        // 1. 主役を切り抜く。切り抜けない写真（風景・料理など）は目を引く部分をぼんやり丸く使い、
+        //    それも見つからなければ写真全体を少し内側に寄せた四角で使う
         let foreground = foregroundMask(in: cgImage, extent: sourceExtent)
         let subjectMask = foreground
+            ?? saliencyMask(in: cgImage, extent: sourceExtent)
             ?? CIImage(color: .white).cropped(to: sourceExtent.insetBy(dx: sourceExtent.width * 0.04, dy: sourceExtent.height * 0.04))
         let box = boundingBox(of: subjectMask, extent: sourceExtent) ?? sourceExtent
 
@@ -41,7 +73,6 @@ nonisolated enum CrayonFilter {
         let toCanvas = CGAffineTransform(translationX: -canvasBox.minX, y: -canvasBox.minY)
             .concatenating(.init(scaleX: scale, y: scale))
         let extent = CGRect(x: 0, y: 0, width: canvasBox.width * scale, height: canvasBox.height * scale).integral
-        let unit = outputLongSide / 1000  // 解像度に依存しないための基準
 
         var image = source.clampedToExtent().transformed(by: toCanvas)
         // 写真の外側は主役なし（写真の端で切れた主役はそこで途切れる）
@@ -51,8 +82,22 @@ nonisolated enum CrayonFilter {
         // 顔の中だけ強くぼかし、目鼻口などの小さなパーツを消す（髪や陰影などの大きな形は残る）
         image = softenFaces(faces, in: image)
 
-        // 3. 主役の色だけでパレットを作り、大胆に減色して数色の塊にする
+        // 暗い写真は、主役の中間の明るさだけを持ち上げる（黒と白の点や色味は変えない）
         let subjectBox = box.applying(toCanvas)
+        image = brightened(image, mask: mask, in: subjectBox)
+
+        return Canvas(source: source, foreground: foreground, box: box, image: image, mask: mask,
+                      subjectBox: subjectBox, extent: extent, unit: outputLongSide / 1000)
+    }
+
+    static func apply(to cgImage: CGImage) -> CrayonResult? {
+        apply(canvas: canvas(for: cgImage))
+    }
+
+    static func apply(canvas: Canvas) -> CrayonResult? {
+        let (image, mask, subjectBox, extent, unit) = (canvas.image, canvas.mask, canvas.subjectBox, canvas.extent, canvas.unit)
+
+        // 3. 主役の色だけでパレットを作り、大胆に減色して数色の塊にする
         let palette = makePalette(from: image, mask: mask, in: subjectBox)
         let detail: CGFloat = 70  // 主役を何 px まで縮めて単純化するか。小さいほど大胆
         var flat = simplified(image, palette: palette, scale: detail / max(subjectBox.width, subjectBox.height), unit: unit)
@@ -90,7 +135,7 @@ nonisolated enum CrayonFilter {
 
         // 塗りに濃淡をつけ、粒の明るい部分は紙の色を見せる
         let paper = CIImage(color: paperColor)
-        let shade = gain(grain, k: -0.45, bias: 1.15)
+        let shade = gain(grain, k: -0.3, bias: 1.1)
         var drawing = shade.applyingFilter("CIMultiplyCompositing", parameters: [kCIInputBackgroundImageKey: flat])
         drawing = paper.applyingFilter("CIBlendWithMask", parameters: [
             kCIInputBackgroundImageKey: drawing,
@@ -105,25 +150,24 @@ nonisolated enum CrayonFilter {
         guard let drawingImage = context.createCGImage(result.cropped(to: extent), from: extent) else { return nil }
 
         // 6. 3D 用に、紙の代わりに透明を敷いた主役だけの絵も作る（切り抜けたときだけ）
-        let character = foreground.flatMap { _ in
+        let character = canvas.foreground.flatMap { _ in
             let cutout = drawing.applyingFilter("CIBlendWithMask", parameters: [
                 kCIInputBackgroundImageKey: CIImage.clear,
                 kCIInputMaskImageKey: roughMask,
             ])
             return context.createCGImage(cutout.cropped(to: extent), from: extent)
         }
-        // 7. 元写真を主役の形に切り抜いたもの（Apple の切り抜きの輪郭そのまま）
-        let photoCutout = foreground.flatMap { mask in
-            let cutout = source.applyingFilter("CIBlendWithMask", parameters: [
-                kCIInputBackgroundImageKey: CIImage.clear,
-                kCIInputMaskImageKey: mask,
-            ])
-            return context.createCGImage(cutout.cropped(to: box), from: box)
-        }
-        return CrayonResult(drawing: drawingImage, character: character, photoCutout: photoCutout)
+        return CrayonResult(drawing: drawingImage, character: character, photoCutout: canvas.photoCutout)
     }
 
     // MARK: - 切り抜き・検出
+
+    /// 主役（人・ペット・物）を切り抜ける写真か
+    static func hasSubject(in cgImage: CGImage) -> Bool {
+        let request = VNGenerateForegroundInstanceMaskRequest()
+        try? VNImageRequestHandler(cgImage: cgImage).perform([request])
+        return !(request.results?.first?.allInstances.isEmpty ?? true)
+    }
 
     /// 主役（前景の人・物）のマスク（主役 = 白）
     private static func foregroundMask(in cgImage: CGImage, extent: CGRect) -> CIImage? {
@@ -137,6 +181,37 @@ nonisolated enum CrayonFilter {
         return mask
             .transformed(by: .init(scaleX: extent.width / mask.extent.width, y: extent.height / mask.extent.height))
             .cropped(to: extent)
+    }
+
+    /// 目を引く部分のマスク（主役 = 白）。Vision の顕著性マップ（68×68 程度の粗い熱マップ）を
+    /// 写真の大きさに広げ、いちばん目立つ所を基準にしきい値をとる。目立つ物が見つからなければ nil
+    private static func saliencyMask(in cgImage: CGImage, extent: CGRect) -> CIImage? {
+        let request = VNGenerateObjectnessBasedSaliencyImageRequest()
+        try? VNImageRequestHandler(cgImage: cgImage).perform([request])
+        guard let observation = request.results?.first, !(observation.salientObjects ?? []).isEmpty else { return nil }
+        return saliencyMask(fromHeatMap: CIImage(cvPixelBuffer: observation.pixelBuffer), extent: extent)
+    }
+
+    /// 顕著性の熱マップ（目立つほど明るい）を extent の大きさのマスクにする。目立つ所がなければ nil
+    static func saliencyMask(fromHeatMap heat: CIImage, extent: CGRect) -> CIImage? {
+        let peak = maximum(of: heat)
+        guard peak > 0.01 else { return nil }
+        let spread = heat
+            .transformed(by: .init(scaleX: extent.width / heat.extent.width, y: extent.height / heat.extent.height))
+            .clampedToExtent()
+            // 熱マップの升目が見えないよう、ぼかして丸い形にする
+            .applyingGaussianBlur(sigma: max(extent.width, extent.height) * 0.03)
+        // いちばん目立つ所の 30〜55% の明るさを境目にする
+        let mask = gain(spread, k: 1 / (0.25 * peak), bias: -0.3 / 0.25).cropped(to: extent)
+        return boundingBox(of: mask, extent: extent) == nil ? nil : mask
+    }
+
+    /// 画像のいちばん明るい値（R）
+    private static func maximum(of image: CIImage) -> CGFloat {
+        let maximum = image.applyingFilter("CIAreaMaximum", parameters: [kCIInputExtentKey: CIVector(cgRect: image.extent)])
+        var pixel = [Float](repeating: 0, count: 4)
+        context.render(maximum, toBitmap: &pixel, rowBytes: 16, bounds: maximum.extent, format: .RGBAf, colorSpace: nil)
+        return CGFloat(pixel[0])
     }
 
     /// マスクの白い部分を囲む矩形
@@ -170,6 +245,43 @@ nonisolated enum CrayonFilter {
         }
     }
 
+    // MARK: - 明るさ
+
+    /// 主役の平均の明るさをこの値に近づける（0〜1、ガンマ空間）
+    static let targetLuma: CGFloat = 0.56
+    /// 持ち上げすぎて写真の印象が変わらないよう、ガンマの指数はこれより小さくしない
+    static let minimumPower: CGFloat = 0.6
+
+    /// 平均の明るさ `luma` を `targetLuma` へ持ち上げるガンマの指数（1 なら変えない）。明るい写真は暗くしない
+    static func brighteningPower(forLuma luma: CGFloat) -> CGFloat {
+        guard luma > 0.001, luma < targetLuma else { return 1 }
+        return max(log(targetLuma) / log(luma), minimumPower)
+    }
+
+    /// 主役の部分の平均の明るさに合わせて、ガンマで中間調を持ち上げる
+    private static func brightened(_ image: CIImage, mask: CIImage, in box: CGRect) -> CIImage {
+        let masked = image.applyingFilter("CIBlendWithMask", parameters: [
+            kCIInputBackgroundImageKey: CIImage(color: .black),
+            kCIInputMaskImageKey: mask,
+        ])
+        let color = average(of: masked, in: box)
+        let coverage = average(of: mask, in: box)[0]
+        guard coverage > 0.01 else { return image }
+        let luma = (0.299 * color[0] + 0.587 * color[1] + 0.114 * color[2]) / coverage
+        let power = brighteningPower(forLuma: luma)
+        guard power < 1 else { return image }
+        return image.applyingFilter("CIGammaAdjust", parameters: ["inputPower": power])
+    }
+
+    /// 範囲内の平均色（RGB, 0〜1）
+    private static func average(of image: CIImage, in box: CGRect) -> [CGFloat] {
+        let average = image.applyingFilter("CIAreaAverage", parameters: [kCIInputExtentKey: CIVector(cgRect: box)])
+        var pixel = [Float](repeating: 0, count: 4)
+        context.render(average, toBitmap: &pixel, rowBytes: 16, bounds: average.extent,
+                       format: .RGBAf, colorSpace: nil)
+        return pixel.prefix(3).map { CGFloat($0) }
+    }
+
     // MARK: - 単純化
 
     /// 主役の部分から代表色を k-means で抽出し、クレヨンらしく彩度を上げたパレットを作る
@@ -191,9 +303,14 @@ nonisolated enum CrayonFilter {
             ])
             // アルファには各色の出現割合が入っているので 1 に戻す
             .settingAlphaOne(in: CGRect(x: 0, y: 0, width: count, height: 1))
-            .applyingFilter("CIColorControls", parameters: [
-                kCIInputSaturationKey: 1.5,
-                kCIInputBrightnessKey: 0.05,
+            .applyingFilter("CIColorControls", parameters: [kCIInputSaturationKey: 1.5])
+            // クレヨンは真っ黒にはならないので、暗い色ほど少し持ち上げる（明るい色はほぼそのまま）
+            .applyingFilter("CIToneCurve", parameters: [
+                "inputPoint0": CIVector(x: 0, y: 0.1),
+                "inputPoint1": CIVector(x: 0.25, y: 0.33),
+                "inputPoint2": CIVector(x: 0.5, y: 0.57),
+                "inputPoint3": CIVector(x: 0.75, y: 0.79),
+                "inputPoint4": CIVector(x: 1, y: 1),
             ])
     }
 
@@ -216,16 +333,19 @@ nonisolated enum CrayonFilter {
     }
 
     /// 顔の楕円領域を強くぼかし、肌の平均色に少し寄せる（パーツの影が暗い穴として残らないように）
-    private static func softenFaces(_ faces: [CGRect], in image: CIImage) -> CIImage {
+    static func softenFaces(_ faces: [CGRect], in image: CIImage) -> CIImage {
         var result = image
         for box in faces {
-            // 鼻〜頬の帯から肌色を取る
+            // 目・眉・鼻の穴・口など、肌より暗い小さなパーツを周りの肌の色で埋めてからぼかす
+            // （そのままぼかすと、パーツの暗さが顔全体に広がって暗く濁る）
+            let filled = image.applyingFilter("CIMorphologyMaximum", parameters: [kCIInputRadiusKey: box.width * 0.06])
+            // 鼻〜頬の帯から肌色を取る（埋めた後の画像から取るので、鼻の穴や影で暗くならない）
             let sample = CGRect(x: box.minX + box.width * 0.2, y: box.minY + box.height * 0.3,
                                 width: box.width * 0.6, height: box.height * 0.25)
-            let skin = image
+            let skin = filled
                 .applyingFilter("CIAreaAverage", parameters: [kCIInputExtentKey: CIVector(cgRect: sample)])
                 .clampedToExtent()
-            let blurred = image.applyingGaussianBlur(sigma: box.width * 0.12)
+            let blurred = filled.applyingGaussianBlur(sigma: box.width * 0.12)
                 .applyingFilter("CIMix", parameters: [
                     kCIInputBackgroundImageKey: skin,
                     kCIInputAmountKey: 0.5,

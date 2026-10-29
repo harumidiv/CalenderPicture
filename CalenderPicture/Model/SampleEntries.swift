@@ -15,7 +15,9 @@ enum SampleEntries {
 
     static func seed(into store: DiaryStore) async {
         let today = DayKey.today()
-        let days = Set([3, 10, 17, today.day]).sorted()
+        // 起動引数 -sampleDayCount N で、今月の1日から N 日ぶん（今日まで）を登録する（共有画像の見た目の確認用）
+        let count = UserDefaults.standard.integer(forKey: "sampleDayCount")
+        let days = count > 0 ? Array(1...min(count, today.day)) : Set([3, 10, 17, today.day]).sorted()
         for (index, day) in days.enumerated() {
             let key = DayKey(year: today.year, month: today.month, day: day)
             guard store.entry(for: key) == nil else { continue }

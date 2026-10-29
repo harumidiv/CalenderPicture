@@ -11,8 +11,9 @@ final class WanderUITests: XCTestCase {
     override func setUp() {
         continueAfterFailure = false
         app = XCUIApplication()
-        app.launchArguments = ["-inMemoryStore", "-seedSampleEntries"]
+        app.launchArguments = ["-paintStyle", "crayon", "-inMemoryStore", "-seedSampleEntries"]
         app.launch()
+        app.buttons["card-date"].tap()
         // サンプルの変換が終わるまで待つ（今日のマスが最後に登録される）
         let day = Calendar.current.dateComponents([.year, .month, .day], from: Date())
         let today = app.buttons[String(format: "day-%04d-%02d-%02d", day.year!, day.month!, day.day!)]
@@ -32,8 +33,15 @@ final class WanderUITests: XCTestCase {
         }
     }
 
+    /// その月のキャラクターを動かすボタン（`offset` は今月からずらす月数）
+    func wanderButton(monthOffset offset: Int = 0) -> XCUIElement {
+        let month = Calendar.current.date(byAdding: .month, value: offset, to: Date())!
+        let parts = Calendar.current.dateComponents([.year, .month], from: month)
+        return app.buttons["open-wander-\(parts.year!)-\(parts.month!)"]
+    }
+
     func testCharactersWanderInMonthWithCharacters() {
-        app.buttons["open-wander"].tap()
+        wanderButton().tap()
         XCTAssertTrue(app.buttons["wander-close"].waitForExistence(timeout: 5))
         sleep(4)  // キャラクターが登場して動き出すのを待つ
         XCTAssertFalse(app.staticTexts["wander-empty"].exists)
@@ -48,12 +56,12 @@ final class WanderUITests: XCTestCase {
         saveScreenshot("wander-crayon-again")
 
         app.buttons["wander-close"].tap()
-        XCTAssertTrue(app.buttons["open-wander"].waitForExistence(timeout: 5))
+        XCTAssertTrue(wanderButton().waitForExistence(timeout: 5))
     }
 
     func testEmptyMonthShowsMessage() {
-        app.buttons["次の月"].tap()
-        app.buttons["open-wander"].tap()
+        // カレンダーには少なくとも先月が並ぶ（サンプルは今月だけ）
+        wanderButton(monthOffset: -1).tap()
         XCTAssertTrue(app.staticTexts["wander-empty"].waitForExistence(timeout: 5))
         // キャラクターがいない月では切り替えボタンを出さない
         XCTAssertFalse(app.segmentedControls["wander-style"].exists)

@@ -2,7 +2,7 @@
 //  CardUITests.swift
 //  CalenderPictureUITests
 //
-//  サンプル（今月の 3・10・17 日と今日）を登録した状態で、カードの裏返し・めくり・削除を確かめる。
+//  サンプル（今月の 3・10・17 日と今日）を登録した状態で、カードの裏返し・めくり・削除・シェアを確かめる。
 //
 
 import XCTest
@@ -19,9 +19,10 @@ final class CardUITests: XCTestCase {
     override func setUp() {
         continueAfterFailure = false
         app = XCUIApplication()
-        app.launchArguments = ["-inMemoryStore", "-seedSampleEntries"]
+        app.launchArguments = ["-paintStyle", "crayon", "-inMemoryStore", "-seedSampleEntries"]
         app.launch()
-        // サンプルの変換が終わるまで待つ
+        // カレンダーを開いて、サンプルの変換が終わるまで待つ
+        app.buttons["card-date"].tap()
         let last = app.buttons[dayKey(sampleDays.last!)]
         XCTAssertTrue(last.waitForExistence(timeout: 10))
         expectation(for: NSPredicate(format: "value == '登録済み'"), evaluatedWith: last)
@@ -49,8 +50,16 @@ final class CardUITests: XCTestCase {
         waitForExpectations(timeout: 5)
     }
 
+    /// カレンダーで登録済みの日を押すと、シートが閉じてその日のカードが一番上に来る
+    func open(day: Int) {
+        if !app.buttons[dayKey(day)].exists { app.buttons["card-date"].tap() }
+        app.buttons[dayKey(day)].tap()
+        waitForDate(day: day)
+        XCTAssertTrue(app.buttons["calendar-close"].waitForNonExistence(timeout: 5))
+    }
+
     func waitForDate(day: Int) {
-        let date = app.staticTexts["card-date"]
+        let date = app.buttons["card-date"]
         expectation(for: NSPredicate(format: "label ENDSWITH %@", "月\(day)日"), evaluatedWith: date)
         waitForExpectations(timeout: 5)
     }
@@ -62,8 +71,7 @@ final class CardUITests: XCTestCase {
     var pager: XCUIElement { app.otherElements["card-pager"] }
 
     func testFlipAndSwipe() {
-        app.buttons[dayKey(10)].tap()
-        waitForDate(day: 10)
+        open(day: 10)
 
         XCTAssertTrue(app.buttons["card"].waitForExistence(timeout: 5))
         let card = visibleCard
@@ -91,8 +99,7 @@ final class CardUITests: XCTestCase {
 
     func testDeckWrapsAroundInfinitely() {
         let days = sampleDays
-        app.buttons[dayKey(days[0])].tap()
-        waitForDate(day: days[0])
+        open(day: days[0])
         // 最初の日の前は最後の日（山の一番後ろのカードが上に来る）
         pager.swipeRight()
         waitForDate(day: days.last!)
@@ -108,8 +115,7 @@ final class CardUITests: XCTestCase {
 
     func testRapidSwipesAreNotDropped() {
         let days = sampleDays
-        app.buttons[dayKey(days[0])].tap()
-        waitForDate(day: days[0])
+        open(day: days[0])
         // 続けて払っても、1回も取りこぼさずに1枚ずつめくれる
         let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.7, dy: 0.45))
         let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.45))
@@ -121,12 +127,14 @@ final class CardUITests: XCTestCase {
 
     func testDeleteMovesToNeighborThenCloses() {
         let days = sampleDays
-        app.buttons[dayKey(days[0])].tap()
-        waitForDate(day: days[0])
+        open(day: days[0])
 
         for (index, day) in days.enumerated() {
             waitForDate(day: day)
-            app.buttons["card-delete"].tap()
+            app.buttons["home-menu"].tap()
+            let delete = app.buttons["card-delete"]
+            XCTAssertTrue(delete.waitForExistence(timeout: 5))
+            delete.tap()
             // iOS 26 の確認ダイアログでは同じボタンが2つ見つかるので最初のものを押す
             let confirm = app.buttons["card-delete-confirm"].firstMatch
             XCTAssertTrue(confirm.waitForExistence(timeout: 5))
@@ -136,10 +144,62 @@ final class CardUITests: XCTestCase {
             }
         }
 
-        // 最後の1件を消したらカードが閉じてカレンダーに戻り、すべて未登録になる
-        XCTAssertTrue(app.buttons["card-close"].waitForNonExistence(timeout: 5))
+        // 最後の1件を消したら空のカードになり、カレンダーではすべて未登録になる
+        XCTAssertTrue(app.buttons["home-add"].waitForExistence(timeout: 5))
+        app.buttons["card-date"].tap()
         for day in days {
             XCTAssertEqual(app.buttons[dayKey(day)].value as? String, "未登録")
         }
+    }
+
+    func testShareSheetMakesImage() {
+        open(day: 10)
+        app.buttons["card-share"].tap()
+        let copy = app.buttons["share-copy"]
+        XCTAssertTrue(copy.waitForExistence(timeout: 5))
+        // 画像を書き出し終わるとボタンが押せるようになる
+        expectation(for: NSPredicate(format: "isEnabled == true"), evaluatedWith: copy)
+        waitForExpectations(timeout: 10)
+        saveScreenshot("share-photo")
+
+        app.buttons["share-background"].tap()
+        sleep(1)
+        saveScreenshot("share-plain")
+
+        copy.tap()
+        XCTAssertTrue(app.staticTexts["share-toast"].waitForExistence(timeout: 5))
+
+        app.buttons["share-close"].tap()
+        XCTAssertTrue(app.buttons["share-close"].waitForNonExistence(timeout: 5))
+        waitForDate(day: 10)
+    }
+
+    /// カレンダーから、その月のらくがきを並べた1枚の画像を共有できる
+    func testMonthShareMakesImage() {
+        let now = calendar.dateComponents([.year, .month], from: Date())
+        let share = app.buttons["month-share-\(now.year!)-\(now.month!)"]
+        XCTAssertTrue(share.waitForExistence(timeout: 5))
+        share.tap()
+        let copy = app.buttons["month-share-copy"]
+        XCTAssertTrue(copy.waitForExistence(timeout: 5))
+        expectation(for: NSPredicate(format: "isEnabled == true"), evaluatedWith: copy)
+        waitForExpectations(timeout: 10)
+        sleep(1)
+        saveScreenshot("month-share")
+        copy.tap()
+        XCTAssertTrue(app.staticTexts["month-share-toast"].waitForExistence(timeout: 5))
+
+        // おかわりで同じ絵を上から貼り足せる（回数には上限がある）
+        let more = app.buttons["month-share-more"]
+        more.tap()
+        more.tap()
+        XCTAssertEqual(more.value as? String, "2回")
+        sleep(1)
+        saveScreenshot("month-share-more")
+        for _ in 0..<5 where more.isEnabled { more.tap() }
+        XCTAssertEqual(more.value as? String, "5回")
+        XCTAssertFalse(more.isEnabled)
+        app.buttons["month-share-close"].tap()
+        XCTAssertTrue(app.buttons["month-share-close"].waitForNonExistence(timeout: 5))
     }
 }

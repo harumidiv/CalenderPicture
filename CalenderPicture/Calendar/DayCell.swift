@@ -2,18 +2,21 @@
 //  DayCell.swift
 //  CalenderPicture
 //
-//  カレンダーの1マス。登録済みならクレヨン画のサムネイルを、シールのように上からペタッと貼る。
+//  カレンダーの1マス。DOOD のようにマスの枠は描かず、未登録の日は数字だけ、
+//  登録済みの日は数字の代わりにクレヨン画をシールのように上からペタッと貼る。
 //
 
 import SwiftUI
 import UIKit
 
 struct DayCell: View {
-    static let aspectRatio: CGFloat = 0.78
+    static let aspectRatio: CGFloat = 0.9
 
     let day: Int
-    /// クレヨン画のデータ。削除済みのモデルを非同期処理から触らないよう、モデルではなく値で受け取る
-    let drawingData: Data?
+    /// 貼る画像のデータ。削除済みのモデルを非同期処理から触らないよう、モデルではなく値で受け取る
+    let imageData: Data?
+    /// 画像が背景の透明なキャラクターか（false なら紙の背景つきのクレヨン画なので角を丸めて切る）
+    var isCutout = false
     /// サムネイルを作り直すきっかけ（更新日時）
     let version: Date?
     let isToday: Bool
@@ -29,32 +32,18 @@ struct DayCell: View {
     @State private var hasStuckOnce = false
 
     var body: some View {
-        RoundedRectangle(cornerRadius: 8)
-            .fill(Color(.secondarySystemBackground))
+        Color.clear
             .aspectRatio(Self.aspectRatio, contentMode: .fit)
             .overlay {
                 if let thumbnail {
                     sticker(thumbnail)
+                } else {
+                    number
                 }
-            }
-            .overlay(alignment: .topLeading) {
-                Text("\(day)")
-                    .font(.caption2.weight(.bold))
-                    .monospacedDigit()
-                    .foregroundStyle(isToday ? .white : .primary)
-                    .frame(minWidth: 18, minHeight: 18)
-                    .background {
-                        if isToday {
-                            Circle().fill(.tint)
-                        } else if thumbnail != nil {
-                            Circle().fill(.background.opacity(0.85))
-                        }
-                    }
-                    .padding(3)
             }
             .contentShape(.rect)
             .task(id: version) {
-                let image = await Self.makeThumbnail(from: drawingData)
+                let image = await Self.makeThumbnail(from: imageData)
                 isStuck = false
                 thumbnail = image
                 guard image != nil else { return }
@@ -66,21 +55,43 @@ struct DayCell: View {
             }
     }
 
+    private var number: some View {
+        Text("\(day)")
+            .font(.system(.callout, design: .rounded))
+            .monospacedDigit()
+            .foregroundStyle(isToday ? Color.white : Color.primary)
+            .frame(width: 30, height: 30)
+            .background {
+                if isToday { Circle().fill(.tint) }
+            }
+    }
+
+    @ViewBuilder
     private func sticker(_ image: UIImage) -> some View {
-        RoundedRectangle(cornerRadius: 8)
-            .fill(.white)
-            .overlay {
+        Group {
+            if isCutout {
                 Image(uiImage: image)
                     .resizable()
-                    .scaledToFill()
+                    .scaledToFit()
+                    .padding(2)
+            } else {
+                // マスの大きさに収めて、はみ出た部分を切る
+                Color.white
+                    .overlay {
+                        Image(uiImage: image)
+                            .resizable()
+                            .scaledToFill()
+                    }
+                    .clipShape(.rect(cornerRadius: 6))
+                    .padding(3)
             }
-            .clipShape(.rect(cornerRadius: 8))
-            // 浮いているあいだは影が大きく薄く、貼ると小さく濃くなる
-            .shadow(color: .black.opacity(isStuck ? 0.14 : 0.08), radius: isStuck ? 1.5 : 10, y: isStuck ? 1 : 12)
-            .scaleEffect(isStuck ? 1 : 1.45)
-            .rotationEffect(.degrees(isStuck ? stickerTilt : stickerTilt * 4 - 6))
-            .offset(y: isStuck ? 0 : -36)
-            .opacity(isStuck ? 1 : 0)
+        }
+        // 浮いているあいだは影が大きく薄く、貼ると小さく濃くなる
+        .shadow(color: .black.opacity(isStuck ? 0.16 : 0.08), radius: isStuck ? 1.5 : 10, y: isStuck ? 1 : 12)
+        .scaleEffect(isStuck ? 1 : 1.45)
+        .rotationEffect(.degrees(isStuck ? stickerTilt : stickerTilt * 4 - 6))
+        .offset(y: isStuck ? 0 : -36)
+        .opacity(isStuck ? 1 : 0)
     }
 
     private static func makeThumbnail(from data: Data?) async -> UIImage? {

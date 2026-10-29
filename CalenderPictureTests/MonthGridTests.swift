@@ -48,6 +48,16 @@ struct MonthGridTests {
         #expect(MonthGrid(year: 2026, month: 1).adding(months: -1) == MonthGrid(year: 2025, month: 12))
     }
 
+    @Test func monthsRangeCrossesYear() {
+        let months = MonthGrid.months(from: MonthGrid(year: 2025, month: 11), through: MonthGrid(year: 2026, month: 2))
+        #expect(months == [
+            MonthGrid(year: 2025, month: 11), MonthGrid(year: 2025, month: 12),
+            MonthGrid(year: 2026, month: 1), MonthGrid(year: 2026, month: 2),
+        ])
+        let reversed = MonthGrid.months(from: MonthGrid(year: 2026, month: 5), through: MonthGrid(year: 2026, month: 3))
+        #expect(reversed == [MonthGrid(year: 2026, month: 3)])
+    }
+
     @Test func weekdaySymbolsFollowFirstWeekday() {
         var japanese = calendar(firstWeekday: 2)
         japanese.locale = Locale(identifier: "ja_JP")
