@@ -14,7 +14,7 @@ final class EmptyDaysUITests: XCTestCase {
         continueAfterFailure = false
         app = XCUIApplication()
         // 設定は起動引数で上書きする（ボタンで切り替えると保存されて、ほかのテストに残るため）
-        app.launchArguments = ["-inMemoryStore", "-showsEmptyDays", "YES"]
+        app.launchArguments = ["-paintStyle", "crayon", "-inMemoryStore", "-showsEmptyDays", "YES"]
         app.launch()
     }
 

@@ -19,7 +19,7 @@ final class CardUITests: XCTestCase {
     override func setUp() {
         continueAfterFailure = false
         app = XCUIApplication()
-        app.launchArguments = ["-inMemoryStore", "-seedSampleEntries"]
+        app.launchArguments = ["-paintStyle", "crayon", "-inMemoryStore", "-seedSampleEntries"]
         app.launch()
         // カレンダーを開いて、サンプルの変換が終わるまで待つ
         app.buttons["card-date"].tap()

@@ -5,7 +5,7 @@
 //  Created by harumi.sagawa on 2026/10/23.
 //
 //  最初の画面。DOOD のように、上に日付のピルとメニュー、中央にカードの山、下にアクションを並べる。
-//  カレンダーとシェアはシートで開く。左上のボタンで、写真が未登録の日もカードとして山に混ぜられる（タップで追加）。
+//  起動時に塗り方（PaintStyle）を選ぶシートを出す。カレンダーとシェアもシートで開く。左上のボタンで、写真が未登録の日もカードとして山に混ぜられる（タップで追加）。
 //
 
 import SwiftData
@@ -22,6 +22,8 @@ struct ContentView: View {
     @State private var confirmsDelete = false
     /// 未登録の日も山に混ぜるか（次に開いたときも覚えておく）
     @AppStorage("showsEmptyDays") private var showsEmptyDays = false
+    /// 起動時に塗り方を選ばせる。起動引数 -paintStyle で指定されたとき（UI テストなど）は出さない
+    @State private var choosesPaintStyle = !ProcessInfo.processInfo.arguments.contains("-\(PaintStyle.storageKey)")
 
     /// 山に積むカード（日付の昇順）。未登録の日も混ぜるときは、一番古い登録（少なくとも今月の1日）から今日までの毎日
     private var items: [CardDeck.Item] {
@@ -89,6 +91,10 @@ struct ContentView: View {
                 onClose: { showsCalendar = false }
             )
         }
+        .sheet(isPresented: $choosesPaintStyle) {
+            PaintStylePicker { choosesPaintStyle = false }
+                .presentationDetents([.medium, .large])
+        }
         .sheet(item: $sharing) { item in
             if let photo = item.photo {
                 ShareSheet(item: item, photo: photo) { sharing = nil }
@@ -146,6 +152,8 @@ struct ContentView: View {
                 Menu {
                     Button("カレンダー", systemImage: "calendar") { showsCalendar = true }
                         .accessibilityIdentifier("menu-calendar")
+                    Button("塗り方を選ぶ", systemImage: "paintbrush") { choosesPaintStyle = true }
+                        .accessibilityIdentifier("menu-paint-style")
                     if hasPhoto {
                         Button("この日の写真を削除", systemImage: "trash", role: .destructive) { confirmsDelete = true }
                             .accessibilityIdentifier("card-delete")

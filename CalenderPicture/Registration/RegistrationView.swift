@@ -2,7 +2,7 @@
 //  RegistrationView.swift
 //  CalenderPicture
 //
-//  選んだ写真をクレヨン画に変換し、確認してから登録する。
+//  選んだ写真を、いま選ばれている塗り方の絵に変換し、確認してから登録する。
 //
 
 import PhotosUI
@@ -56,7 +56,7 @@ struct RegistrationView: View {
     private var content: some View {
         switch phase {
         case .converting:
-            ProgressView("クレヨンで描いています…")
+            ProgressView("\(PaintStyle.current.title)で描いています…")
         case .failed:
             ContentUnavailableView(
                 "写真を変換できませんでした",
@@ -72,7 +72,7 @@ struct RegistrationView: View {
                     .shadow(color: .black.opacity(0.15), radius: 8, y: 4)
                     .onTapGesture { showsOriginal.toggle() }
                     .animation(.easeInOut(duration: 0.2), value: showsOriginal)
-                Text(showsOriginal ? "元の写真（タップでクレヨン画）" : "タップで元の写真と見比べ")
+                Text(showsOriginal ? "元の写真（タップで\(PaintStyle.current.title)の絵）" : "タップで元の写真と見比べ")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

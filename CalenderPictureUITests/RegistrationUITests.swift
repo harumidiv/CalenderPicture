@@ -13,7 +13,7 @@ final class RegistrationUITests: XCTestCase {
     override func setUp() {
         continueAfterFailure = false
         app = XCUIApplication()
-        app.launchArguments = ["-inMemoryStore"]
+        app.launchArguments = ["-paintStyle", "crayon", "-inMemoryStore"]
         app.launch()
         openCalendar()
     }
@@ -77,7 +77,7 @@ final class RegistrationUITests: XCTestCase {
 
     func testRegisteredPhotoSurvivesRelaunch() {
         app.terminate()
-        app.launchArguments = ["-resetStore"]
+        app.launchArguments = ["-paintStyle", "crayon", "-resetStore"]
         app.launch()
         openCalendar()
 
@@ -94,7 +94,7 @@ final class RegistrationUITests: XCTestCase {
         XCTAssertTrue(register.waitForNonExistence(timeout: 5))
 
         app.terminate()
-        app.launchArguments = []
+        app.launchArguments = ["-paintStyle", "crayon"]
         app.launch()
         openCalendar()
         let relaunchedCell = app.buttons[dayKey(7)]

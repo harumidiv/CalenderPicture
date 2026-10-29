@@ -11,7 +11,7 @@ final class WanderUITests: XCTestCase {
     override func setUp() {
         continueAfterFailure = false
         app = XCUIApplication()
-        app.launchArguments = ["-inMemoryStore", "-seedSampleEntries"]
+        app.launchArguments = ["-paintStyle", "crayon", "-inMemoryStore", "-seedSampleEntries"]
         app.launch()
         app.buttons["card-date"].tap()
         // サンプルの変換が終わるまで待つ（今日のマスが最後に登録される）

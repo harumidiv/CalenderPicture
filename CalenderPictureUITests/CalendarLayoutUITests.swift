@@ -13,7 +13,7 @@ final class CalendarLayoutUITests: XCTestCase {
     /// 横向きでも、スクロールすれば月末の日をタップできる（6行になる月でも最終行が切れない）
     func testLastDayReachableInLandscape() {
         let app = XCUIApplication()
-        app.launchArguments = ["-inMemoryStore"]
+        app.launchArguments = ["-paintStyle", "crayon", "-inMemoryStore"]
         app.launch()
         app.buttons["card-date"].tap()
         XCUIDevice.shared.orientation = .landscapeLeft
@@ -33,7 +33,7 @@ final class CalendarLayoutUITests: XCTestCase {
     /// 「前の月を表示」で1か月ずつさかのぼり、さかのぼった月の日もタップできる
     func testShowEarlierMonths() {
         let app = XCUIApplication()
-        app.launchArguments = ["-inMemoryStore"]
+        app.launchArguments = ["-paintStyle", "crayon", "-inMemoryStore"]
         app.launch()
         app.buttons["card-date"].tap()
 

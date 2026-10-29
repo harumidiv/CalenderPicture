@@ -3,6 +3,7 @@
 //  CalenderPictureTests
 //
 
+import CoreImage.CIFilterBuiltins
 import ImageIO
 import Testing
 import UIKit
@@ -38,6 +39,58 @@ struct EntryImageProcessorTests {
 
     @Test func crayonDrawingIs1200LongSide() throws {
         let result = try #require(CrayonFilter.apply(to: makeImage(width: 1600, height: 1200)))
+        #expect(max(result.drawing.width, result.drawing.height) == 1200)
+    }
+
+    /// どの塗り方でも、主役の外（キャンバスの隅）は同じ紙の色で、背景の色は残らない
+    @Test(arguments: PaintStyle.allCases)
+    func everyPaintStyleLeavesPlainPaperOutsideSubject(style: PaintStyle) throws {
+        let drawing = try #require(style.paint(makeImage(width: 1600, height: 1200))).drawing
+        var pixel = [UInt8](repeating: 0, count: 4)
+        let context = try #require(CGContext(data: &pixel, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4,
+                                             space: CGColorSpaceCreateDeviceRGB(),
+                                             bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        // 左上の隅の 1 ピクセルだけを描く
+        context.draw(drawing, in: CGRect(x: -4, y: -CGFloat(drawing.height) + 5, width: CGFloat(drawing.width), height: CGFloat(drawing.height)))
+        let paper = CrayonFilter.paperColor
+        for (value, expected) in zip(pixel.prefix(3), [paper.red, paper.green, paper.blue]) {
+            #expect(abs(Int(value) - Int(expected * 255)) <= 3, "\(style): \(pixel)")
+        }
+    }
+
+    /// 顕著性の熱マップの目立つ所だけが主役になる（熱マップの明るさの絶対値によらない）
+    @Test func saliencyHeatMapBecomesSoftSubjectMask() throws {
+        // 68×68 の熱マップの右寄りに、明るさ 0.5 の円がある
+        let blob = CIFilter.radialGradient()
+        blob.center = CGPoint(x: 45, y: 34)
+        blob.radius0 = 8
+        blob.radius1 = 14
+        blob.color0 = CIColor(red: 0.5, green: 0.5, blue: 0.5)
+        blob.color1 = .black
+        let heat = blob.outputImage!.cropped(to: CGRect(x: 0, y: 0, width: 68, height: 68))
+        let extent = CGRect(x: 0, y: 0, width: 1200, height: 900)
+        let mask = try #require(CrayonFilter.saliencyMask(fromHeatMap: heat, extent: extent))
+
+        func value(atX x: Int, y: Int) -> UInt8 {
+            var pixel: UInt8 = 0
+            CrayonFilter.context.render(mask, toBitmap: &pixel, rowBytes: 1,
+                                        bounds: CGRect(x: x, y: y, width: 1, height: 1), format: .L8, colorSpace: nil)
+            return pixel
+        }
+        #expect(value(atX: 794, y: 450) > 240)  // 円の中心
+        #expect(value(atX: 100, y: 100) < 10)   // 隅
+    }
+
+    /// 真っ暗な熱マップ（目立つ物なし）では主役を作らない
+    @Test func emptySaliencyHeatMapGivesNoMask() {
+        let heat = CIImage(color: .black).cropped(to: CGRect(x: 0, y: 0, width: 68, height: 68))
+        #expect(CrayonFilter.saliencyMask(fromHeatMap: heat, extent: CGRect(x: 0, y: 0, width: 1200, height: 900)) == nil)
+    }
+
+    /// クレヨンへの切り替えなしで、どの塗り方でも描ける
+    @Test(arguments: PaintStyle.allCases)
+    func everyPaintStyleDrawsAt1200LongSide(style: PaintStyle) throws {
+        let result = try #require(style.paint(makeImage(width: 1600, height: 1200)))
         #expect(max(result.drawing.width, result.drawing.height) == 1200)
     }
 
