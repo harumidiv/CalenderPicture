@@ -284,8 +284,8 @@ nonisolated enum CrayonFilter {
 
     // MARK: - 単純化
 
-    /// 主役の部分から代表色を k-means で抽出し、彩度を上げたパレットを作る（暗い色は少し持ち上げる）
-    static func makePalette(from image: CIImage, mask: CIImage, in box: CGRect, count: Int = 6) -> CIImage {
+    /// 主役の部分から代表色を k-means で抽出し、クレヨンらしく彩度を上げたパレットを作る
+    private static func makePalette(from image: CIImage, mask: CIImage, in box: CGRect, count: Int = 6) -> CIImage {
         let s = 100 / max(box.width, box.height)
         let subject = image
             .applyingFilter("CIBlendWithMask", parameters: [
@@ -333,16 +333,19 @@ nonisolated enum CrayonFilter {
     }
 
     /// 顔の楕円領域を強くぼかし、肌の平均色に少し寄せる（パーツの影が暗い穴として残らないように）
-    private static func softenFaces(_ faces: [CGRect], in image: CIImage) -> CIImage {
+    static func softenFaces(_ faces: [CGRect], in image: CIImage) -> CIImage {
         var result = image
         for box in faces {
-            // 鼻〜頬の帯から肌色を取る
+            // 目・眉・鼻の穴・口など、肌より暗い小さなパーツを周りの肌の色で埋めてからぼかす
+            // （そのままぼかすと、パーツの暗さが顔全体に広がって暗く濁る）
+            let filled = image.applyingFilter("CIMorphologyMaximum", parameters: [kCIInputRadiusKey: box.width * 0.06])
+            // 鼻〜頬の帯から肌色を取る（埋めた後の画像から取るので、鼻の穴や影で暗くならない）
             let sample = CGRect(x: box.minX + box.width * 0.2, y: box.minY + box.height * 0.3,
                                 width: box.width * 0.6, height: box.height * 0.25)
-            let skin = image
+            let skin = filled
                 .applyingFilter("CIAreaAverage", parameters: [kCIInputExtentKey: CIVector(cgRect: sample)])
                 .clampedToExtent()
-            let blurred = image.applyingGaussianBlur(sigma: box.width * 0.12)
+            let blurred = filled.applyingGaussianBlur(sigma: box.width * 0.12)
                 .applyingFilter("CIMix", parameters: [
                     kCIInputBackgroundImageKey: skin,
                     kCIInputAmountKey: 0.5,

@@ -9,7 +9,7 @@
 import SwiftUI
 
 struct PaintStylePicker: View {
-    @AppStorage(PaintStyle.storageKey) private var style: PaintStyle = .crayon
+    @AppStorage(PaintStyle.storageKey) private var style: PaintStyle = .defaultStyle
     let onFinish: () -> Void
     @State private var showsComparison = false
 

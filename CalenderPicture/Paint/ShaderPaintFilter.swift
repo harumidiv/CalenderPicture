@@ -2,7 +2,7 @@
 //  ShaderPaintFilter.swift
 //  CalenderPicture
 //
-//  1 ピクセルずつ描ける塗り方（アニメ調・水彩など）を ShaderPaint.metal のカーネルで描く。
+//  1 ピクセルずつ描ける塗り方（アニメ調・切り絵など）を ShaderPaint.metal のカーネルで描く。
 //  下ごしらえ（主役の切り抜き・明るさの補正）はクレヨンと共通。
 //
 

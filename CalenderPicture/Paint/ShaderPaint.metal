@@ -2,7 +2,7 @@
 //  ShaderPaint.metal
 //  CalenderPicture
 //
-//  アニメ調・水彩・切り絵・ドット絵・版画・油絵・ポップアートの塗り方。どれも 1 ピクセルずつ独立に描く。
+//  アニメ調・切り絵・ドット絵・版画・ポップアートの塗り方。どれも 1 ピクセルずつ独立に描く。
 //  入力はすべて同じ: 0 写真 / 1 少しぼかした写真 / 2 主役のマスク / 3 ぼかした主役のマスク、出力は 4 番。
 //
 //  線の太さや模様の細かさは、長辺 676px の絵を基準にした「基準ピクセル」で決めている（res = 基準ピクセルでの大きさ）。
@@ -73,8 +73,6 @@ static float sobel(texture2d<float> t, float2 uv, float r, float2 px, bool color
 /// 主役の外に敷く紙の色。どの塗り方でも同じ色にする（CrayonFilter.paperColor と同じ）
 constant float3 paperColor = float3(0.98, 0.975, 0.965);
 
-/// 絵の具を乗せる紙の色（細かいムラつき）。主役の中だけで使う
-static float3 paper(float2 fp) { return float3(0.972, 0.966, 0.952) * (0.965 + 0.035 * fbm(fp / 6.0)); }
 
 static float bayer2(float2 a) { a = floor(a); return fract(a.x / 2.0 + a.y * a.y * 0.75); }
 static float bayer4(float2 a) { return bayer2(0.5 * a) * 0.25 + bayer2(a); }
@@ -115,28 +113,6 @@ PAINT_KERNEL(paintCel) {
     float outline = smoothstep(0.15, 0.4, sobel(mask, uv, 2, px, false));
     color = mix(paperColor, color, m);
     color = mix(color, float3(0.14, 0.11, 0.16), max(edge, outline));
-    PAINT_END(color)
-}
-
-// MARK: - 水彩
-
-/// にじんだ境界、縁に溜まる絵の具、紙の粒
-PAINT_KERNEL(paintWatercolor) {
-    PAINT_BEGIN
-    float2 wobble = (float2(fbm(uv * 5), fbm(uv * 5 + 9.1)) - 0.5) * 18 * px;
-    float3 c = rgb(soft, uv + wobble);
-    float3 wide = blur(soft, uv + wobble, 6, px);
-    c = mix(c, floor(c * 5 + 0.5) / 5, 0.35);
-    // 色の変わり目に絵の具が溜まって濃くなる
-    float pooling = saturate(length(c - wide) * 2.2);
-    c = mix(c, c * c * 0.9, pooling * 0.8);
-    c = saturated(c, 1.25);
-    c = mix(c, float3(1), 0.12);
-    c *= 0.9 + 0.2 * noise(fp / 2.5);
-
-    float m = smoothstep(0.35, 0.65, gray(softMask, uv + wobble * 1.8) + (fbm(uv * 14) - 0.5) * 0.45);
-    float rim = smoothstep(0.0, 0.25, m) * (1 - smoothstep(0.25, 0.6, m));
-    float3 color = mix(paperColor, c * paper(fp) * (1 - rim * 0.14), m);
     PAINT_END(color)
 }
 
@@ -227,45 +203,6 @@ PAINT_KERNEL(paintWoodblock) {
     float edge = smoothstep(0.2, 0.4, sobel(soft, uv, 1.6, px, true)) * m;
     float outline = smoothstep(0.12, 0.35, sobel(mask, uv, 2.5, px, false));
     color = mix(color, float3(0.12, 0.12, 0.16), max(edge, outline) * 0.9);
-    PAINT_END(color)
-}
-
-// MARK: - 油絵
-
-/// o の向きの 5×5 の範囲の平均色と、色のばらつき
-static float kuwaharaRegion(texture2d<float> photo, float2 uv, float2 o, float2 px, thread float3 &mean) {
-    float3 sum = 0, squares = 0;
-    for (int x = 0; x < 5; x++)
-        for (int y = 0; y < 5; y++) {
-            float3 c = rgb(photo, uv + float2(x, y) * o * 1.5 * px);
-            sum += c;
-            squares += c * c;
-        }
-    mean = sum / 25;
-    float3 variance = squares / 25 - mean * mean;
-    return variance.r + variance.g + variance.b;
-}
-
-/// Kuwahara フィルタ: 周りの 4 方向のうち、いちばん色がそろっている方向の平均色で塗る（筆のタッチ状になる）。
-/// 主役だけを塗り、主役の外は紙のまま残す
-PAINT_KERNEL(paintOil) {
-    PAINT_BEGIN
-    float3 color = 0;
-    float best = INFINITY;
-    const float2 directions[4] = { float2(-1, -1), float2(1, -1), float2(-1, 1), float2(1, 1) };
-    for (int i = 0; i < 4; i++) {
-        float3 mean;
-        float variance = kuwaharaRegion(photo, uv, directions[i], px, mean);
-        if (variance < best) { best = variance; color = mean; }
-    }
-    color = saturated(color, 1.18);
-    // 主役の縁は、筆でかすれたように横向きのムラで途切れさせる
-    float stroke = noise(fp * float2(0.08, 0.5));
-    float m = smoothstep(0.35, 0.65, gray(softMask, uv) + (stroke - 0.5) * 0.35);
-    // キャンバスの布目
-    color *= 0.95 + 0.05 * (sin(fp.x * 1.6) * sin(fp.y * 1.6) * 0.5 + 0.5);
-    color *= 0.96 + 0.06 * stroke;
-    color = mix(paperColor, color, m);
     PAINT_END(color)
 }
 
